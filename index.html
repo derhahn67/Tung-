@@ -239,10 +239,14 @@ canvas { display: block; max-width: 100%; }
             <div class="kv"><span>telemetry data</span><span id="svData" class="s">0</span></div>
             <div class="kv"><span>best run (kills)</span><span id="svBest">0</span></div>
             <div class="kv"><span>furthest cluster</span><span id="svBestWorld">-</span></div>
+            <h4 style="margin:14px 0 4px;color:var(--dim);font-weight:normal;font-size:11px">// operator image (pick before launch)</h4>
+            <div id="svChars" style="display:flex;flex-wrap:wrap;gap:6px"></div>
             <h4 style="margin:14px 0 4px;color:var(--dim);font-weight:normal;font-size:11px">// active build</h4>
             <div id="svBuild" class="ds">no run active</div>
             <h4 style="margin:14px 0 4px;color:var(--dim);font-weight:normal;font-size:11px">// permanent upgrades</h4>
             <div id="svMeta"></div>
+            <h4 style="margin:14px 0 4px;color:var(--dim);font-weight:normal;font-size:11px">// achievements</h4>
+            <div id="svAchv"></div>
             <h4 style="margin:14px 0 4px;color:var(--dim);font-weight:normal;font-size:11px">// settings</h4>
             <div class="kv"><span>sound</span><label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="svMute"> <span id="svMuteLbl">on</span></label></div>
             <div class="kv"><span>volume</span><input type="range" id="svVol" min="0" max="1" step="0.05" style="width:110px"></div>
@@ -1022,7 +1026,10 @@ const Survivor = (() => {
     anvil: makeMask(40, (cx) => {
       cx.fillRect(10, 6, 20, 7); cx.fillRect(2, 6, 10, 5); cx.fillRect(14, 15, 12, 6); cx.fillRect(4, 21, 32, 11); cx.fillRect(6, 32, 6, 4); cx.fillRect(28, 32, 6, 4);
     }),
-    chest: makeMask(16, (cx) => { cx.fillRect(2, 8, 12, 6); cx.beginPath(); cx.arc(8, 8, 6, Math.PI, 0); cx.fill(); cx.fillRect(2, 7, 12, 3); })
+    chest: makeMask(16, (cx) => { cx.fillRect(2, 8, 12, 6); cx.beginPath(); cx.arc(8, 8, 6, Math.PI, 0); cx.fill(); cx.fillRect(2, 7, 12, 3); }),
+    shooter: makeMask(16, (cx) => { cx.beginPath(); cx.moveTo(8, 0); cx.lineTo(16, 8); cx.lineTo(8, 16); cx.lineTo(0, 8); cx.closePath(); cx.fill(); cx.fillRect(7, -3, 2, 6); }),
+    exploder: makeMask(18, (cx) => { cx.beginPath(); cx.arc(9, 9, 6, 0, Math.PI * 2); cx.fill(); for (let i = 0; i < 6; i++) { const a = i * Math.PI / 3; cx.fillRect(9 + Math.cos(a) * 7 - 1.5, 9 + Math.sin(a) * 7 - 1.5, 3, 3); } }),
+    splitter: makeMask(18, (cx) => { cx.beginPath(); cx.arc(9, 9, 8, 0, Math.PI * 2); cx.fill(); })
   };
   const tintCache = new Map();
   function tinted(key, color) {
@@ -1092,7 +1099,7 @@ const Survivor = (() => {
 
   const MAX_WEAPONS = 6;
   const ANVIL_INTERVAL = 300;
-  const RARITY_COLOR = { common: "#8b949e", uncommon: "#3fb950", rare: "#58a6ff", epic: "#bc8cff" };
+  const RARITY_COLOR = { common: "#8b949e", uncommon: "#3fb950", rare: "#58a6ff", epic: "#bc8cff", evolved: "#ffd33d" };
   const WEAPONS = {
     bolt: { name: "Packet Bolt", sym: "✦", max: 8, rarity: "common", desc: "fires at the nearest enemies" },
     orbit: { name: "Orbiting Shards", sym: "✡", max: 8, rarity: "common", desc: "blades circle around you" },
@@ -1131,21 +1138,61 @@ const Survivor = (() => {
     { id: "xp", name: "Telemetry boost", desc: "+10% XP gain", max: 5, cost: (l) => 50 + 45 * l },
     { id: "start", name: "Warm cache", desc: "start each run at level 2 with an extra pick", max: 1, cost: () => 300 }
   ];
-  const meta = Store.load("surv", { data: 0, best: 0, bestWorld: -1, hp: 0, dmg: 0, xp: 0, start: 0 });
+  const meta = Store.load("surv", {
+    data: 0, best: 0, bestWorld: -1, hp: 0, dmg: 0, xp: 0, start: 0, charId: "default",
+    totalKills: 0, totalChests: 0, totalEvolutions: 0, maxWeaponsEquipped: 0, achv: {}
+  });
+
+  /* ---------- weapon evolutions: max level + a paired passive, auto-triggers mid-run ---------- */
+  const EVOLUTIONS = {
+    bolt: { need: "critc", name: "Railgun Array", sym: "⟁", desc: "always crits, pierces everything" },
+    orbit: { need: "might", name: "Shard Storm", sym: "✺", desc: "twice the shards, much harder hits" },
+    aura: { need: "vital", name: "Overload Field", sym: "◉", desc: "huge radius, heals you as it ticks" },
+    chain: { need: "haste", name: "Grid Collapse", sym: "⥇", desc: "chains across the whole battlefield" },
+    nova: { need: "armor", name: "Singularity Pulse", sym: "⊚", desc: "pulls enemies in, then a bigger blast" },
+    flame: { need: "thorns", name: "Inferno Core", sym: "♨", desc: "wider cone, burn spreads between enemies" }
+  };
+
+  /* ---------- playable characters ---------- */
+  const CHARACTERS = {
+    default: { name: "Operator", sym: "▣", color: "#3fb950", startWeapon: "bolt", hpMul: 1, spdMul: 1, dmgMul: 1, desc: "balanced — no bonuses, no penalties" },
+    sentinel: { name: "Sentinel", sym: "◭", color: "#58a6ff", startWeapon: "aura", hpMul: 1.3, spdMul: 0.85, dmgMul: 0.9, desc: "+30% HP, -15% speed, -10% damage" },
+    vector: { name: "Vector", sym: "➤", color: "#d29922", startWeapon: "shotgun", hpMul: 0.85, spdMul: 1.25, dmgMul: 1, desc: "+25% speed, -15% HP" },
+    glitch: { name: "Glitch", sym: "✴", color: "#bc8cff", startWeapon: "mines", hpMul: 0.9, spdMul: 1, dmgMul: 1.15, desc: "+15% damage, -10% HP" }
+  };
+
+  /* ---------- achievements: auto-unlock, one-time telemetry bonus ---------- */
+  const ACHIEVEMENTS = [
+    { id: "first_blood", name: "First Blood", sym: "✦", desc: "score your first kill", reward: 20, check: (m) => m.totalKills >= 1 },
+    { id: "crate_hunter", name: "Crate Hunter", sym: "◆", desc: "open 5 loot crates", reward: 80, check: (m) => m.totalChests >= 5 },
+    { id: "survivor", name: "Deep Migration", sym: "→", desc: "reach cluster 3 in one run", reward: 100, check: (m) => m.bestWorld >= 2 },
+    { id: "full_loadout", name: "Full Loadout", sym: "▣", desc: "equip 6 weapons in one run", reward: 100, check: (m) => m.maxWeaponsEquipped >= 6 },
+    { id: "evolved", name: "Breakthrough", sym: "⟁", desc: "evolve a weapon", reward: 120, check: (m) => m.totalEvolutions >= 1 },
+    { id: "century", name: "Century", sym: "✪", desc: "1000 kills across all runs", reward: 200, check: (m) => m.totalKills >= 1000 }
+  ];
+  function checkAchievements() {
+    let any = false;
+    ACHIEVEMENTS.forEach((a) => {
+      if (!meta.achv[a.id] && a.check(meta)) { meta.achv[a.id] = true; meta.data += a.reward; any = true; }
+    });
+    if (any) Store.save("surv", meta);
+    return any;
+  }
 
   const keys = {};
   let g = null, running = false, raf = 0, lastT = 0;
 
   /* ---------- run setup ---------- */
   function newGame() {
-    const maxHp = 100 + meta.hp * 15;
+    const char = CHARACTERS[meta.charId] || CHARACTERS.default;
+    const maxHp = (100 + meta.hp * 15) * char.hpMul;
     g = {
       t: 0, worldT: 0, world: 0, bossSpawned: false, banner: { text: "cluster: " + WORLDS[0].name, t: 2.5 },
       p: { x: 0, y: 0, r: 11, hp: maxHp, maxHp, inv: 0, face: { x: 1, y: 0 }, walk: 0 },
       xp: 0, lvl: 1, next: 5, kills: 0, pending: 0, choosing: false, over: false, wheelDone: false,
-      weapons: { bolt: 1 }, passives: {},
+      char, weapons: { [char.startWeapon]: 1 }, passives: {}, evolved: {},
       cd: { bolt: 0, aura: 0, chain: 0, nova: 0, mines: 0, drone: 0, boomerang: 0, homing: 0, flame: 0, freeze: 0, shotgun: 0, shuriken: 0, meteor: 0, poison: 0 },
-      enemies: [], shots: [], gems: [], fx: [], texts: [], mines: [], chests: [],
+      enemies: [], shots: [], eshots: [], gems: [], fx: [], texts: [], mines: [], chests: [],
       boomerangs: [], missiles: [], shurikens: [], meteors: [], clouds: [], flameFx: null,
       orbitAng: 0, beamAng: 0, droneAng: 0, dronePos: null, spawnAcc: 0, nextAnvil: ANVIL_INTERVAL,
       shake: 0, hitstop: 0
@@ -1156,9 +1203,9 @@ const Survivor = (() => {
   const lv = (o, k) => o[k] || 0;
   function stat() {
     return {
-      dmg: (1 + 0.12 * lv(g.passives, "might")) * (1 + 0.08 * meta.dmg),
+      dmg: (1 + 0.12 * lv(g.passives, "might")) * (1 + 0.08 * meta.dmg) * g.char.dmgMul,
       cd: 1 - 0.08 * lv(g.passives, "haste"),
-      spd: 165 * (1 + 0.1 * lv(g.passives, "swift")),
+      spd: 165 * (1 + 0.1 * lv(g.passives, "swift")) * g.char.spdMul,
       magnet: 130 * (1 + 0.3 * lv(g.passives, "magnet")),
       xp: 1 + 0.1 * meta.xp,
       critc: Math.min(0.6, 0.04 * lv(g.passives, "critc")),
@@ -1170,18 +1217,27 @@ const Survivor = (() => {
   const scale = () => (1 + g.worldT / 70) * Math.pow(1.8, g.world);
 
   /* ---------- spawning ---------- */
-  function spawnEnemy(kind) {
-    const a = Math.random() * Math.PI * 2, d = 560;
+  function spawnEnemy(kind, originX, originY) {
+    const a = Math.random() * Math.PI * 2;
+    const atOrigin = originX !== undefined;
+    const d = atOrigin ? rand(10, 26) : 560;
+    const ox = atOrigin ? originX : g.p.x, oy = atOrigin ? originY : g.p.y;
     const s = scale(), col = world().enemy;
     const T = {
       grunt: { r: 10, hp: 14, spd: 62, dmg: 8, xp: 1, color: col[0] },
       runner: { r: 7, hp: 8, spd: 118, dmg: 6, xp: 1, color: col[1] },
       tank: { r: 17, hp: 70, spd: 42, dmg: 16, xp: 4, color: col[2] },
+      shooter: { r: 9, hp: 18, spd: 55, dmg: 9, xp: 2, color: col[1] },
+      exploder: { r: 12, hp: 22, spd: 78, dmg: 0, xp: 2, color: col[0] },
+      splitter: { r: 15, hp: 55, spd: 52, dmg: 11, xp: 3, color: col[2] },
+      splitling: { r: 6, hp: 8, spd: 100, dmg: 6, xp: 1, color: col[1] },
       boss: { r: 36, hp: 2200, spd: 70, dmg: 30, xp: 60, color: "#ffd33d" },
       anvil: { r: 30, hp: 1500, spd: 50, dmg: 26, xp: 25, color: "#9aa4b2" }
     }[kind];
-    g.enemies.push({ kind, x: g.p.x + Math.cos(a) * d, y: g.p.y + Math.sin(a) * d, r: T.r, hp: T.hp * s, maxHp: T.hp * s,
-      spd: T.spd * (kind === "boss" || kind === "anvil" ? 1 : 1 + g.world * 0.08), dmg: T.dmg * (1 + g.world * 0.4), xp: T.xp, color: T.color,
+    const special = kind === "boss" || kind === "anvil";
+    g.enemies.push({ kind, x: ox + Math.cos(a) * d, y: oy + Math.sin(a) * d, r: T.r, hp: T.hp * (atOrigin ? s * 0.6 : s), maxHp: T.hp * (atOrigin ? s * 0.6 : s),
+      spd: T.spd * (special ? 1 : 1 + g.world * 0.08), dmg: T.dmg * (1 + g.world * 0.4), xp: T.xp, color: T.color,
+      burst: 34 * (1 + g.world * 0.4), shootCd: rand(0.3, 1.5),
       hitO: 0, flash: 0, kx: 0, ky: 0 });
   }
 
@@ -1201,8 +1257,11 @@ const Survivor = (() => {
     while (g.spawnAcc >= 1) {
       g.spawnAcc -= 1;
       const r = Math.random();
-      if (g.worldT > 60 && r < 0.12) spawnEnemy("tank");
-      else if (g.worldT > 25 && r < 0.4) spawnEnemy("runner");
+      if (g.worldT > 110 && r < 0.05) spawnEnemy("splitter");
+      else if (g.worldT > 75 && r < 0.11) spawnEnemy("shooter");
+      else if (g.worldT > 45 && r < 0.18) spawnEnemy("exploder");
+      else if (g.worldT > 60 && r < 0.28) spawnEnemy("tank");
+      else if (g.worldT > 25 && r < 0.58) spawnEnemy("runner");
       else spawnEnemy("grunt");
     }
     // occasional swarm ring
@@ -1215,10 +1274,11 @@ const Survivor = (() => {
   function applySlow(e, mul, dur) { e.slowMul = Math.min(e.slowMul === undefined ? 1 : e.slowMul, mul); e.slowT = Math.max(e.slowT || 0, dur); }
 
   /* ---------- damage & rewards ---------- */
-  function hurt(e, amount, isDot) {
+  function hurt(e, amount, isDot, forceCrit) {
     if (e.hp <= 0) return;
     let crit = false;
-    if (!isDot && amount > 0 && Math.random() < stat().critc) { amount *= stat().critd; crit = true; }
+    if (forceCrit) { amount *= stat().critd; crit = true; }
+    else if (!isDot && amount > 0 && Math.random() < stat().critc) { amount *= stat().critd; crit = true; }
     e.hp -= amount; e.flash = 0.08;
     g.texts.push({ x: e.x + rand(-6, 6), y: e.y - e.r, v: Math.round(amount), t: 0.6, crit });
     Sfx.hit(crit);
@@ -1242,6 +1302,14 @@ const Survivor = (() => {
       g.chests.push({ x: e.x + rand(-14, 14), y: e.y + rand(-14, 14), r: 13, t: 0, got: false });
       g.banner = { text: "ANVIL SHAWN destroyed — loot crate deployed", t: 3 };
       g.shake = Sfx.settings.shake ? 0.5 : 0; g.hitstop = 0.08; Sfx.boss();
+    } else if (e.kind === "exploder") {
+      const pd = Math.hypot(g.p.x - e.x, g.p.y - e.y);
+      if (pd < 70) { g.p.hp -= e.burst; g.fx.push({ type: "hurt", t: 0.15 }); Sfx.hurt(); }
+      g.fx.push({ type: "ring", x: e.x, y: e.y, R: 70, t: 0.3, color: "248,81,73" });
+      g.gems.push({ x: e.x, y: e.y, v: e.xp });
+    } else if (e.kind === "splitter") {
+      spawnEnemy("splitling", e.x, e.y); spawnEnemy("splitling", e.x, e.y);
+      g.gems.push({ x: e.x, y: e.y, v: e.xp });
     } else {
       g.gems.push({ x: e.x, y: e.y, v: e.xp });
     }
@@ -1270,14 +1338,26 @@ const Survivor = (() => {
     const S = stat(), p = g.p;
     for (const k in g.cd) g.cd[k] -= dt;
 
+    for (const k in EVOLUTIONS) {
+      const ev = EVOLUTIONS[k];
+      if (!g.evolved[k] && lv(g.weapons, k) >= WEAPONS[k].max && lv(g.passives, ev.need) >= 1) {
+        g.evolved[k] = true;
+        meta.totalEvolutions++; if (checkAchievements()) renderSide(); else Store.save("surv", meta);
+        g.banner = { text: "EVOLVED: " + ev.name + "!", t: 3.5 };
+        g.shake = Sfx.settings.shake ? 0.6 : 0; Sfx.levelup();
+        renderBuild();
+      }
+    }
+
     const bl = lv(g.weapons, "bolt");
     if (bl && g.cd.bolt <= 0) {
       g.cd.bolt = (0.85 - bl * 0.05) * S.cd;
       const targets = nearest(p.x, p.y, 1 + Math.floor(bl / 2), 260);
       if (!targets.length) targets.push({ x: p.x + p.face.x, y: p.y + p.face.y });
+      const evo = g.evolved.bolt;
       targets.forEach((t) => {
         const a = Math.atan2(t.y - p.y, t.x - p.x);
-        g.shots.push({ x: p.x, y: p.y, vx: Math.cos(a) * 460, vy: Math.sin(a) * 460, dmg: (12 + bl * 6) * S.dmg, pierce: bl >= 5 ? 3 : 1, t: 1.4, hit: new Set() });
+        g.shots.push({ x: p.x, y: p.y, vx: Math.cos(a) * 460, vy: Math.sin(a) * 460, dmg: (12 + bl * 6) * S.dmg * (evo ? 2.2 : 1), pierce: evo ? 99 : (bl >= 5 ? 3 : 1), t: 1.4, hit: new Set(), forceCrit: evo });
       });
       Sfx.shoot();
     }
@@ -1311,13 +1391,18 @@ const Survivor = (() => {
     const fl = lv(g.weapons, "flame");
     if (fl && g.cd.flame <= 0) {
       g.cd.flame = 0.18;
-      const range = 80 + fl * 10, half = 0.5, faceAng = Math.atan2(p.face.y, p.face.x);
+      const evo = g.evolved.flame;
+      const range = 80 + fl * 10, half = evo ? 0.9 : 0.5, faceAng = Math.atan2(p.face.y, p.face.x);
+      const burned = [];
       g.enemies.forEach((e) => {
         const d = Math.hypot(e.x - p.x, e.y - p.y);
         if (d > range) return;
         let diff = Math.atan2(e.y - p.y, e.x - p.x) - faceAng;
         while (diff > Math.PI) diff -= Math.PI * 2; while (diff < -Math.PI) diff += Math.PI * 2;
-        if (Math.abs(diff) < half) { hurt(e, (3 + fl * 2) * S.dmg); applyBurn(e, (2 + fl * 1.5) * S.dmg, 2); }
+        if (Math.abs(diff) < half) { hurt(e, (3 + fl * 2) * S.dmg); applyBurn(e, (2 + fl * 1.5) * S.dmg, 2); burned.push(e); }
+      });
+      if (evo) burned.forEach((e) => {
+        g.enemies.forEach((e2) => { if (e2 !== e && !e2.burnT && Math.hypot(e2.x - e.x, e2.y - e.y) < 44) applyBurn(e2, (1 + fl) * S.dmg, 1.5); });
       });
       g.flameFx = { ang: faceAng, range, t: 0.15 };
     }
@@ -1355,13 +1440,14 @@ const Survivor = (() => {
 
     const ol = lv(g.weapons, "orbit");
     if (ol) {
+      const evo = g.evolved.orbit;
       g.orbitAng += dt * (2.6 + ol * 0.25);
-      const n = ol + 1, R = 62 + ol * 6;
+      const n = (ol + 1) * (evo ? 2 : 1), R = 62 + ol * 6;
       for (let i = 0; i < n; i++) {
         const a = g.orbitAng + i * Math.PI * 2 / n;
         const bx = p.x + Math.cos(a) * R, by = p.y + Math.sin(a) * R;
         g.enemies.forEach((e) => {
-          if (e.hitO <= 0 && Math.hypot(e.x - bx, e.y - by) < e.r + 9) { hurt(e, (8 + ol * 5) * S.dmg); e.hitO = 0.45; }
+          if (e.hitO <= 0 && Math.hypot(e.x - bx, e.y - by) < e.r + 9) { hurt(e, (8 + ol * 5) * S.dmg * (evo ? 1.7 : 1)); e.hitO = 0.45; }
         });
       }
     }
@@ -1369,22 +1455,26 @@ const Survivor = (() => {
     const al = lv(g.weapons, "aura");
     if (al && g.cd.aura <= 0) {
       g.cd.aura = 0.5;
-      const R = 52 + al * 12;
-      g.enemies.forEach((e) => { if (Math.hypot(e.x - p.x, e.y - p.y) < R + e.r) hurt(e, (4 + al * 4) * S.dmg); });
+      const evo = g.evolved.aura;
+      const R = (52 + al * 12) * (evo ? 1.5 : 1);
+      let hitAny = false;
+      g.enemies.forEach((e) => { if (Math.hypot(e.x - p.x, e.y - p.y) < R + e.r) { hurt(e, (4 + al * 4) * S.dmg * (evo ? 1.6 : 1)); hitAny = true; } });
+      if (evo && hitAny) p.hp = Math.min(p.maxHp, p.hp + 0.4);
     }
 
     const cl = lv(g.weapons, "chain");
     if (cl && g.cd.chain <= 0) {
+      const evo = g.evolved.chain;
       const first = nearest(p.x, p.y, 1, 260)[0];
       if (first) {
         g.cd.chain = (2.3 - cl * 0.15) * S.cd;
         const hit = new Set([first]);
         let cur = first, from = { x: p.x, y: p.y };
-        for (let j = 0; j < 2 + cl; j++) {
+        for (let j = 0; j < 2 + cl + (evo ? 12 : 0); j++) {
           g.fx.push({ type: "bolt", x1: from.x, y1: from.y, x2: cur.x, y2: cur.y, t: 0.18 });
           hurt(cur, (20 + cl * 10) * S.dmg);
           from = { x: cur.x, y: cur.y };
-          const nx = nearest(cur.x, cur.y, 1, 170, hit)[0];
+          const nx = nearest(cur.x, cur.y, 1, evo ? 9999 : 170, hit)[0];
           if (!nx) break;
           hit.add(nx); cur = nx;
         }
@@ -1393,14 +1483,18 @@ const Survivor = (() => {
 
     const nl = lv(g.weapons, "nova");
     if (nl && g.cd.nova <= 0) {
+      const evo = g.evolved.nova;
       g.cd.nova = (3.2 - nl * 0.2) * S.cd;
-      const R = 120 + nl * 18;
+      const R = (120 + nl * 18) * (evo ? 1.4 : 1);
       g.fx.push({ type: "ring", x: p.x, y: p.y, R, t: 0.35 });
       g.enemies.forEach((e) => {
         const d = Math.hypot(e.x - p.x, e.y - p.y);
         if (d < R + e.r) {
-          hurt(e, (15 + nl * 8) * S.dmg);
-          if (e.kind !== "boss" && e.kind !== "anvil" && d > 0) { e.kx = (e.x - p.x) / d * 340; e.ky = (e.y - p.y) / d * 340; }
+          hurt(e, (15 + nl * 8) * S.dmg * (evo ? 1.5 : 1));
+          if (e.kind !== "boss" && e.kind !== "anvil" && d > 0) {
+            const dir = evo ? -1 : 1; // evolved: pull in first, then the next pulse pushes out
+            e.kx = (e.x - p.x) / d * 340 * dir; e.ky = (e.y - p.y) / d * 340 * dir;
+          }
         }
       });
     }
@@ -1521,6 +1615,8 @@ const Survivor = (() => {
 
   function openWheel() {
     g.choosing = true; g.opts = null; g.wheelDone = false;
+    meta.totalChests++;
+    if (checkAchievements()) renderSide(); else Store.save("surv", meta);
     const rewards = rollRewards(3);
     rewards.forEach(applyReward);
     renderBuild();
@@ -1575,6 +1671,13 @@ const Survivor = (() => {
     if (keys.arrowright || keys.d) mx++;
     if (keys.arrowup || keys.w) my--;
     if (keys.arrowdown || keys.s) my++;
+    if (navigator.getGamepads) {
+      const gp = navigator.getGamepads()[0];
+      if (gp && gp.connected) {
+        if (Math.abs(gp.axes[0]) > 0.15) mx += gp.axes[0];
+        if (Math.abs(gp.axes[1]) > 0.15) my += gp.axes[1];
+      }
+    }
     if (mx || my) {
       const l = joy.on ? 1 / Math.min(1, Math.hypot(mx, my)) * Math.hypot(mx, my) : Math.hypot(mx, my);
       p.x += mx / l * S.spd * dt; p.y += my / l * S.spd * dt;
@@ -1593,7 +1696,17 @@ const Survivor = (() => {
       const spdMul = e.slowT > 0 ? e.slowMul : 1;
       if (e.slowT > 0) e.slowT -= dt;
       const dx = p.x - e.x, dy = p.y - e.y, d = Math.hypot(dx, dy) || 1;
-      e.x += (dx / d * e.spd * spdMul + e.kx) * dt; e.y += (dy / d * e.spd * spdMul + e.ky) * dt;
+      let moveSign = 1;
+      if (e.kind === "shooter") {
+        moveSign = d < 170 ? -1 : d < 230 ? 0 : 1;
+        e.shootCd -= dt;
+        if (e.shootCd <= 0 && d < 480) {
+          e.shootCd = 2.3;
+          const a = Math.atan2(dy, dx);
+          g.eshots.push({ x: e.x, y: e.y, vx: Math.cos(a) * 170, vy: Math.sin(a) * 170, dmg: e.dmg, t: 3 });
+        }
+      }
+      e.x += (dx / d * e.spd * spdMul * moveSign + e.kx) * dt; e.y += (dy / d * e.spd * spdMul * moveSign + e.ky) * dt;
       e.kx *= 0.88; e.ky *= 0.88;
       e.hitO -= dt; e.flash -= dt;
       if (d < e.r + p.r && p.inv <= 0) {
@@ -1606,6 +1719,16 @@ const Survivor = (() => {
       }
       if (e.kind !== "boss" && e.kind !== "anvil" && d > 900) { e.hp = 0; } // despawn stragglers far away
     });
+
+    g.eshots.forEach((s) => {
+      s.x += s.vx * dt; s.y += s.vy * dt; s.t -= dt;
+      if (!s.hit && p.inv <= 0 && Math.hypot(p.x - s.x, p.y - s.y) < p.r + 5) {
+        if (Math.random() < stat().dodge) { p.inv = 0.2; Sfx.dodge(); }
+        else { p.hp -= s.dmg * (1 - Math.min(0.6, 0.08 * lv(g.passives, "armor"))); p.inv = 0.3; g.fx.push({ type: "hurt", t: 0.15 }); Sfx.hurt(); }
+        s.hit = true;
+      }
+    });
+    g.eshots = g.eshots.filter((s) => s.t > 0 && !s.hit);
 
     g.mines.forEach((m) => {
       m.fuse -= dt;
@@ -1698,7 +1821,7 @@ const Survivor = (() => {
       s.x += s.vx * dt; s.y += s.vy * dt; s.t -= dt;
       for (const e of g.enemies) {
         if (s.pierce <= 0) break;
-        if (e.hp > 0 && !s.hit.has(e) && Math.hypot(e.x - s.x, e.y - s.y) < e.r + 4) { s.hit.add(e); hurt(e, s.dmg); s.pierce--; }
+        if (e.hp > 0 && !s.hit.has(e) && Math.hypot(e.x - s.x, e.y - s.y) < e.r + 4) { s.hit.add(e); hurt(e, s.dmg, false, s.forceCrit); s.pierce--; }
       }
     });
     g.shots = g.shots.filter((s) => s.t > 0 && s.pierce > 0);
@@ -1728,17 +1851,22 @@ const Survivor = (() => {
     meta.data += earned;
     if (g.kills > meta.best) meta.best = g.kills;
     if (g.world > meta.bestWorld) meta.bestWorld = g.world;
+    meta.totalKills += g.kills;
+    meta.maxWeaponsEquipped = Math.max(meta.maxWeaponsEquipped, Object.keys(g.weapons).length);
+    const newAchv = checkAchievements();
     Store.save("surv", meta);
     Sfx.die();
     const m = Math.floor(g.t / 60), s = Math.floor(g.t % 60);
     const buildIcons = Object.keys(g.weapons).concat(Object.keys(g.passives)).map((k) => {
-      const def = WEAPONS[k] || PASSIVES[k], lvl = g.weapons[k] || g.passives[k], col = RARITY_COLOR[def.rarity || "common"];
-      return '<div class="hudicon" style="border-color:' + col + '"><span style="color:' + col + '">' + def.sym + "</span><b>" + lvl + "</b></div>";
+      const ev = g.evolved[k] && EVOLUTIONS[k];
+      const def = ev || WEAPONS[k] || PASSIVES[k];
+      const lvl = g.weapons[k] || g.passives[k], col = ev ? "#ffd33d" : RARITY_COLOR[def.rarity || "common"];
+      return '<div class="hudicon" style="border-color:' + col + '" title="' + def.name + '"><span style="color:' + col + '">' + def.sym + "</span><b>" + lvl + "</b></div>";
     }).join("");
     overlay.innerHTML = '<div style="color:var(--red);font-size:16px">FATAL: service overloaded</div>' +
       '<div class="ds">survived ' + m + "m " + s + "s · " + g.kills + " kills · level " + g.lvl + " · cluster " + world().name + "</div>" +
       '<div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;max-width:320px;margin:10px 0">' + buildIcons + "</div>" +
-      '<div class="s">+' + earned + " telemetry data</div>" +
+      '<div class="s">+' + earned + " telemetry data" + (newAchv ? " · achievement unlocked!" : "") + "</div>" +
       '<button data-act="restart" style="padding:10px 20px">re-run test [space]</button>';
     overlay.style.display = "flex";
     $("svStatus").textContent = "crashed";
@@ -1821,20 +1949,25 @@ const Survivor = (() => {
       ctx.closePath(); ctx.fill();
     }
 
-    const SPRITE_KIND = { grunt: "grunt", runner: "runner", tank: "tank", boss: "boss", anvil: "anvil" };
+    const SPRITE_KIND = { grunt: "grunt", runner: "runner", tank: "tank", boss: "boss", anvil: "anvil", shooter: "shooter", exploder: "exploder", splitter: "splitter", splitling: "runner" };
     g.enemies.forEach((e) => {
       let color = e.color;
       if (e.flash > 0) color = "#ffffff";
+      else if (e.kind === "exploder" && Math.floor(g.t * 10) % 2) color = "#f85149";
       else if (e.burnT > 0 && Math.floor(g.t * 8) % 2) color = "#ffa657";
       else if (e.poisonT > 0) color = "#a371f7";
       else if (e.slowT > 0) color = "#79c0ff";
       const size = e.r * (e.kind === "anvil" ? 2.3 : e.kind === "boss" ? 2.2 : 2.3);
       drawSprite(SPRITE_KIND[e.kind] || "grunt", color, e.x, e.y, size, e.x > p.x);
+      if (e.kind === "splitter") { ctx.strokeStyle = "rgba(0,0,0,0.5)"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(e.x - 4, e.y - 5); ctx.lineTo(e.x, e.y); ctx.lineTo(e.x + 3, e.y + 5); ctx.stroke(); ctx.lineWidth = 1; }
       ctx.fillStyle = e.kind === "anvil" ? "rgba(255,123,47,0.85)" : "rgba(0,0,0,0.55)";
       ctx.fillRect(e.x - e.r * 0.45, e.y - e.r * 0.25, e.r * 0.28, e.r * 0.28);
       ctx.fillRect(e.x + e.r * 0.17, e.y - e.r * 0.25, e.r * 0.28, e.r * 0.28);
-      if (e.kind === "tank" && e.hp < e.maxHp) { ctx.fillStyle = "#f85149"; ctx.fillRect(e.x - e.r, e.y - e.r - 6, 2 * e.r * e.hp / e.maxHp, 3); }
+      if ((e.kind === "tank" || e.kind === "splitter") && e.hp < e.maxHp) { ctx.fillStyle = "#f85149"; ctx.fillRect(e.x - e.r, e.y - e.r - 6, 2 * e.r * e.hp / e.maxHp, 3); }
     });
+
+    ctx.fillStyle = "#ff7b72";
+    g.eshots.forEach((s) => { ctx.beginPath(); ctx.arc(s.x, s.y, 3.5, 0, Math.PI * 2); ctx.fill(); });
 
     const ol = lv(g.weapons, "orbit");
     if (ol) {
@@ -1873,7 +2006,7 @@ const Survivor = (() => {
       }
     });
 
-    const pColor = p.inv > 0 && Math.floor(p.inv * 20) % 2 ? "#ffffff" : "#3fb950";
+    const pColor = p.inv > 0 && Math.floor(p.inv * 20) % 2 ? "#ffffff" : g.char.color;
     const pFrame = p.walk > 0 && Math.floor(p.walk * 8) % 2 ? "playerB" : "playerA";
     drawSprite(pFrame, pColor, p.x, p.y, p.r * 2.3, p.face.x < 0);
     ctx.fillStyle = "#010409"; ctx.fillRect(p.x - 3, p.y - 7, 6, 3);
@@ -1952,7 +2085,10 @@ const Survivor = (() => {
       const col = RARITY_COLOR[def.rarity || "common"];
       return '<div class="hudicon" style="border-color:' + col + '" title="' + def.name + " Lv " + lvl + '"><span style="color:' + col + '">' + def.sym + "</span><b>" + lvl + "</b></div>";
     };
-    const w = Object.keys(g.weapons).map((k) => mk(k, WEAPONS[k], g.weapons[k]));
+    const w = Object.keys(g.weapons).map((k) => {
+      if (g.evolved[k]) { const ev = EVOLUTIONS[k]; return mk(k, { sym: ev.sym, rarity: "evolved", name: ev.name }, "★"); }
+      return mk(k, WEAPONS[k], g.weapons[k]);
+    });
     const p = Object.keys(g.passives).map((k) => mk(k, PASSIVES[k], g.passives[k]));
     $("svBuild").innerHTML = '<div style="display:flex;flex-wrap:wrap;gap:6px">' + w.concat(p).join("") + "</div>";
   }
@@ -1961,10 +2097,19 @@ const Survivor = (() => {
     $("svData").textContent = meta.data;
     $("svBest").textContent = meta.best;
     $("svBestWorld").textContent = meta.bestWorld < 0 ? "-" : WORLDS[meta.bestWorld % WORLDS.length].name + " (" + (meta.bestWorld + 1) + ")";
+    $("svChars").innerHTML = Object.keys(CHARACTERS).map((id) => {
+      const c = CHARACTERS[id], sel = meta.charId === id;
+      return '<div class="hudicon" data-char="' + id + '" title="' + c.name + " — " + c.desc + '" style="width:40px;height:40px;cursor:pointer;border-color:' + (sel ? c.color : "var(--line)") + (sel ? ";box-shadow:0 0 0 1px " + c.color : "") + '"><span style="color:' + c.color + '">' + c.sym + "</span></div>";
+    }).join("");
     $("svMeta").innerHTML = META.map((m) => {
       const l = meta[m.id], maxed = l >= m.max, c = m.cost(l);
       return '<div class="row"><div><div class="nm">' + m.name + ' <span class="lv">[' + l + "/" + m.max + ']</span></div><div class="ds">' + m.desc + "</div></div>" +
         '<button data-m="' + m.id + '"' + (maxed || meta.data < c ? " disabled" : "") + ">" + (maxed ? "max" : c) + "</button></div>";
+    }).join("");
+    $("svAchv").innerHTML = ACHIEVEMENTS.map((a) => {
+      const unlocked = !!meta.achv[a.id];
+      return '<div class="row"><div><div class="nm" style="color:' + (unlocked ? "#ffd33d" : "var(--dim)") + '">' + a.sym + " " + a.name + "</div><div class=\"ds\">" + a.desc + " · +" + a.reward + "</div></div>" +
+        '<span class="' + (unlocked ? "s" : "c") + '">' + (unlocked ? "unlocked" : "locked") + "</span></div>";
     }).join("");
     renderBuild();
   }
@@ -1974,6 +2119,11 @@ const Survivor = (() => {
     const c = m.cost(meta[m.id]);
     if (meta[m.id] >= m.max || meta.data < c) return;
     meta.data -= c; meta[m.id]++; Store.save("surv", meta); renderSide();
+  });
+  $("svChars").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-char]");
+    if (!b || running) return; // character locks in at the start of a run
+    meta.charId = b.dataset.char; Store.save("surv", meta); renderSide();
   });
 
   /* ---------- loop & controls ---------- */
