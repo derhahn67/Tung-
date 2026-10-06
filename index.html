@@ -1016,6 +1016,29 @@ const Survivor = (() => {
   const MASKS = {
     playerA: makeMask(20, (cx) => { roundedRect(cx, 4, 2, 12, 11); cx.fillRect(9, 0, 2, 3); cx.fillRect(2, 6, 2, 6); cx.fillRect(16, 6, 2, 6); cx.fillRect(7, 13, 2, 5); cx.fillRect(11, 13, 2, 5); }),
     playerB: makeMask(20, (cx) => { roundedRect(cx, 4, 2, 12, 11); cx.fillRect(9, 0, 2, 3); cx.fillRect(2, 6, 2, 6); cx.fillRect(16, 6, 2, 6); cx.fillRect(5, 13, 2, 5); cx.fillRect(13, 13, 2, 5); }),
+    // Sentinel: broad armoured hull with square shoulder plates.
+    sentinelA: makeMask(20, (cx) => { roundedRect(cx, 2, 3, 16, 11); cx.fillRect(0, 5, 3, 6); cx.fillRect(17, 5, 3, 6); cx.fillRect(8, 0, 4, 3); cx.fillRect(6, 14, 3, 5); cx.fillRect(11, 14, 3, 5); }),
+    sentinelB: makeMask(20, (cx) => { roundedRect(cx, 2, 3, 16, 11); cx.fillRect(0, 5, 3, 6); cx.fillRect(17, 5, 3, 6); cx.fillRect(8, 0, 4, 3); cx.fillRect(4, 14, 3, 5); cx.fillRect(13, 14, 3, 5); }),
+    // Vector: slim diamond torso with a trailing fin for a speedster look.
+    vectorA: makeMask(20, (cx) => {
+      cx.beginPath(); cx.moveTo(10, 2); cx.lineTo(15, 6); cx.lineTo(13, 13); cx.lineTo(7, 13); cx.lineTo(5, 6); cx.closePath(); cx.fill();
+      cx.beginPath(); cx.moveTo(5, 7); cx.lineTo(-2, 10); cx.lineTo(5, 11); cx.closePath(); cx.fill();
+      cx.fillRect(8, 13, 2, 5); cx.fillRect(11, 13, 2, 5);
+    }),
+    vectorB: makeMask(20, (cx) => {
+      cx.beginPath(); cx.moveTo(10, 2); cx.lineTo(15, 6); cx.lineTo(13, 13); cx.lineTo(7, 13); cx.lineTo(5, 6); cx.closePath(); cx.fill();
+      cx.beginPath(); cx.moveTo(5, 7); cx.lineTo(-2, 10); cx.lineTo(5, 11); cx.closePath(); cx.fill();
+      cx.fillRect(6, 13, 2, 5); cx.fillRect(13, 13, 2, 5);
+    }),
+    // Glitch: jagged, asymmetric outline suggesting a corrupted signal.
+    glitchA: makeMask(20, (cx) => {
+      cx.beginPath(); cx.moveTo(5, 2); cx.lineTo(12, 1); cx.lineTo(16, 5); cx.lineTo(13, 8); cx.lineTo(17, 11); cx.lineTo(11, 13); cx.lineTo(6, 12); cx.lineTo(8, 8); cx.lineTo(3, 7); cx.closePath(); cx.fill();
+      cx.fillRect(7, 14, 2, 5); cx.fillRect(12, 14, 2, 4);
+    }),
+    glitchB: makeMask(20, (cx) => {
+      cx.beginPath(); cx.moveTo(5, 2); cx.lineTo(12, 1); cx.lineTo(16, 5); cx.lineTo(13, 8); cx.lineTo(17, 11); cx.lineTo(11, 13); cx.lineTo(6, 12); cx.lineTo(8, 8); cx.lineTo(3, 7); cx.closePath(); cx.fill();
+      cx.fillRect(5, 14, 2, 5); cx.fillRect(14, 14, 2, 4);
+    }),
     grunt: makeMask(16, (cx) => { cx.beginPath(); cx.arc(8, 8, 7, 0, Math.PI * 2); cx.fill(); cx.fillRect(4, 14, 3, 2); cx.fillRect(9, 14, 3, 2); }),
     runner: makeMask(14, (cx) => { cx.beginPath(); cx.moveTo(7, 0); cx.lineTo(13, 7); cx.lineTo(7, 14); cx.lineTo(1, 7); cx.closePath(); cx.fill(); }),
     tank: makeMask(22, (cx) => { roundedRect(cx, 3, 3, 16, 16); cx.fillRect(1, 18, 8, 3); cx.fillRect(13, 18, 8, 3); }),
@@ -1155,10 +1178,10 @@ const Survivor = (() => {
 
   /* ---------- playable characters ---------- */
   const CHARACTERS = {
-    default: { name: "Operator", sym: "▣", color: "#3fb950", startWeapon: "bolt", hpMul: 1, spdMul: 1, dmgMul: 1, desc: "balanced — no bonuses, no penalties" },
-    sentinel: { name: "Sentinel", sym: "◭", color: "#58a6ff", startWeapon: "aura", hpMul: 1.3, spdMul: 0.85, dmgMul: 0.9, desc: "+30% HP, -15% speed, -10% damage" },
-    vector: { name: "Vector", sym: "➤", color: "#d29922", startWeapon: "shotgun", hpMul: 0.85, spdMul: 1.25, dmgMul: 1, desc: "+25% speed, -15% HP" },
-    glitch: { name: "Glitch", sym: "✴", color: "#bc8cff", startWeapon: "mines", hpMul: 0.9, spdMul: 1, dmgMul: 1.15, desc: "+15% damage, -10% HP" }
+    default: { name: "Operator", sym: "▣", color: "#3fb950", sprite: "player", startWeapon: "bolt", hpMul: 1, spdMul: 1, dmgMul: 1, desc: "balanced — no bonuses, no penalties" },
+    sentinel: { name: "Sentinel", sym: "◭", color: "#58a6ff", sprite: "sentinel", startWeapon: "aura", hpMul: 1.3, spdMul: 0.85, dmgMul: 0.9, desc: "+30% HP, -15% speed, -10% damage" },
+    vector: { name: "Vector", sym: "➤", color: "#d29922", sprite: "vector", startWeapon: "shotgun", hpMul: 0.85, spdMul: 1.25, dmgMul: 1, desc: "+25% speed, -15% HP" },
+    glitch: { name: "Glitch", sym: "✴", color: "#bc8cff", sprite: "glitch", startWeapon: "mines", hpMul: 0.9, spdMul: 1, dmgMul: 1.15, desc: "+15% damage, -10% HP" }
   };
 
   /* ---------- achievements: auto-unlock, one-time telemetry bonus ---------- */
@@ -1333,6 +1356,40 @@ const Survivor = (() => {
       .slice(0, n)
       .map((o) => o.e);
   }
+  // Picks targets within range, putting enemies this hit would finish off first (so bolts
+  // don't spread damage across several half-dead enemies), then falls back to nearest.
+  function pickTargets(x, y, n, maxD, killDmg) {
+    return g.enemies
+      .filter((e) => e.hp > 0)
+      .map((e) => ({ e, d: Math.hypot(e.x - x, e.y - y) }))
+      .filter((o) => o.d <= maxD)
+      .sort((a, b) => {
+        const ka = a.e.hp <= killDmg ? 0 : 1, kb = b.e.hp <= killDmg ? 0 : 1;
+        return ka !== kb ? ka - kb : a.d - b.d;
+      })
+      .slice(0, n)
+      .map((o) => o.e);
+  }
+  // Predicts where a target will be when a projectile fired now would reach it, so shots lead
+  // moving enemies instead of always aiming at their current position.
+  function leadAim(px, py, t, projSpeed) {
+    const tvx = t.vx || 0, tvy = t.vy || 0;
+    const rx = t.x - px, ry = t.y - py;
+    const a = tvx * tvx + tvy * tvy - projSpeed * projSpeed, b = 2 * (rx * tvx + ry * tvy), c = rx * rx + ry * ry;
+    let time = 0;
+    if (Math.abs(a) > 0.01) {
+      const disc = b * b - 4 * a * c;
+      if (disc >= 0) {
+        const sq = Math.sqrt(disc), cands = [(-b + sq) / (2 * a), (-b - sq) / (2 * a)].filter((v) => v > 0);
+        if (cands.length) time = Math.min(...cands);
+      }
+    } else if (Math.abs(b) > 0.01) {
+      const tt = -c / b;
+      if (tt > 0) time = tt;
+    }
+    time = Math.min(time, 1.2);
+    return { x: t.x + tvx * time, y: t.y + tvy * time };
+  }
 
   function weapons(dt) {
     const S = stat(), p = g.p;
@@ -1352,12 +1409,15 @@ const Survivor = (() => {
     const bl = lv(g.weapons, "bolt");
     if (bl && g.cd.bolt <= 0) {
       g.cd.bolt = (0.85 - bl * 0.05) * S.cd;
-      const targets = nearest(p.x, p.y, 1 + Math.floor(bl / 2), 260);
-      if (!targets.length) targets.push({ x: p.x + p.face.x, y: p.y + p.face.y });
       const evo = g.evolved.bolt;
+      const dmgPerHit = (12 + bl * 6) * S.dmg * (evo ? 2.2 : 1);
+      const BOLT_SPEED = 460;
+      const targets = pickTargets(p.x, p.y, 1 + Math.floor(bl / 2), 300, dmgPerHit);
+      if (!targets.length) targets.push({ x: p.x + p.face.x, y: p.y + p.face.y });
       targets.forEach((t) => {
-        const a = Math.atan2(t.y - p.y, t.x - p.x);
-        g.shots.push({ x: p.x, y: p.y, vx: Math.cos(a) * 460, vy: Math.sin(a) * 460, dmg: (12 + bl * 6) * S.dmg * (evo ? 2.2 : 1), pierce: evo ? 99 : (bl >= 5 ? 3 : 1), t: 1.4, hit: new Set(), forceCrit: evo });
+        const aim = t.vx !== undefined ? leadAim(p.x, p.y, t, BOLT_SPEED) : t;
+        const a = Math.atan2(aim.y - p.y, aim.x - p.x);
+        g.shots.push({ x: p.x, y: p.y, vx: Math.cos(a) * BOLT_SPEED, vy: Math.sin(a) * BOLT_SPEED, dmg: dmgPerHit, pierce: evo ? 99 : (bl >= 5 ? 3 : 1), t: 1.4, hit: new Set(), forceCrit: evo });
       });
       Sfx.shoot();
     }
@@ -1420,7 +1480,8 @@ const Survivor = (() => {
       const t = nearest(p.x, p.y, 1, 300)[0];
       if (t) {
         g.cd.shuriken = (1.4 - shl * 0.08) * S.cd;
-        const a = Math.atan2(t.y - p.y, t.x - p.x);
+        const aim = leadAim(p.x, p.y, t, 320);
+        const a = Math.atan2(aim.y - p.y, aim.x - p.x);
         g.shurikens.push({ x: p.x, y: p.y, vx: Math.cos(a) * 320, vy: Math.sin(a) * 320, dmg: (10 + shl * 5) * S.dmg, bounces: 2 + shl, hit: new Set(), t: 3 });
       }
     }
@@ -1528,7 +1589,8 @@ const Survivor = (() => {
         g.cd.drone = (1.1 - drL * 0.08) * S.cd;
         const t = nearest(g.dronePos.x, g.dronePos.y, 1, 240)[0];
         if (t) {
-          const a = Math.atan2(t.y - g.dronePos.y, t.x - g.dronePos.x);
+          const aim = leadAim(g.dronePos.x, g.dronePos.y, t, 420);
+          const a = Math.atan2(aim.y - g.dronePos.y, aim.x - g.dronePos.x);
           g.shots.push({ x: g.dronePos.x, y: g.dronePos.y, vx: Math.cos(a) * 420, vy: Math.sin(a) * 420, dmg: (9 + drL * 5) * S.dmg, pierce: 1, t: 1.2, hit: new Set() });
         }
       }
@@ -1706,7 +1768,8 @@ const Survivor = (() => {
           g.eshots.push({ x: e.x, y: e.y, vx: Math.cos(a) * 170, vy: Math.sin(a) * 170, dmg: e.dmg, t: 3 });
         }
       }
-      e.x += (dx / d * e.spd * spdMul * moveSign + e.kx) * dt; e.y += (dy / d * e.spd * spdMul * moveSign + e.ky) * dt;
+      e.vx = dx / d * e.spd * spdMul * moveSign + e.kx; e.vy = dy / d * e.spd * spdMul * moveSign + e.ky;
+      e.x += e.vx * dt; e.y += e.vy * dt;
       e.kx *= 0.88; e.ky *= 0.88;
       e.hitO -= dt; e.flash -= dt;
       if (d < e.r + p.r && p.inv <= 0) {
@@ -2007,7 +2070,7 @@ const Survivor = (() => {
     });
 
     const pColor = p.inv > 0 && Math.floor(p.inv * 20) % 2 ? "#ffffff" : g.char.color;
-    const pFrame = p.walk > 0 && Math.floor(p.walk * 8) % 2 ? "playerB" : "playerA";
+    const pFrame = g.char.sprite + (p.walk > 0 && Math.floor(p.walk * 8) % 2 ? "B" : "A");
     drawSprite(pFrame, pColor, p.x, p.y, p.r * 2.3, p.face.x < 0);
     ctx.fillStyle = "#010409"; ctx.fillRect(p.x - 3, p.y - 7, 6, 3);
 
