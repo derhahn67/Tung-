@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>devops-console :: cluster-prod-eu1</title>
+<style>
+:root {
+  --bg: #0d1117;
+  --bg2: #161b22;
+  --bg3: #1f2630;
+  --line: #30363d;
+  --text: #c9d1d9;
+  --dim: #8b949e;
+  --green: #3fb950;
+  --blue: #58a6ff;
+  --purple: #bc8cff;
+  --orange: #d29922;
+  --red: #f85149;
+  --cyan: #39c5cf;
+  --mono: "JetBrains Mono", "Fira Code", Consolas, "Courier New", monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-family: var(--mono); font-size: 13px; }
+body { display: flex; flex-direction: column; overflow: hidden; }
+button { font-family: var(--mono); font-size: 12px; background: var(--bg3); color: var(--text); border: 1px solid var(--line); padding: 5px 10px; cursor: pointer; border-radius: 4px; }
+button:hover:not(:disabled) { border-color: var(--blue); color: var(--blue); }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+input { font-family: var(--mono); }
+
+/* ---------- Top command bar ---------- */
+#topbar { height: 38px; flex: none; display: flex; align-items: center; gap: 16px; padding: 0 14px; background: var(--bg2); border-bottom: 1px solid var(--line); }
+#topbar .brand { color: var(--green); font-weight: bold; }
+#topbar .crumb { color: var(--dim); }
+#topbar .crumb b { color: var(--text); font-weight: normal; }
+#topbar .spacer { flex: 1; }
+#topbar .pill { padding: 2px 8px; border: 1px solid var(--line); border-radius: 10px; color: var(--dim); font-size: 11px; }
+#topbar .pill.ok { color: var(--green); border-color: #23863655; }
+#cmdk { width: 280px; background: var(--bg); border: 1px solid var(--line); color: var(--text); padding: 4px 8px; border-radius: 4px; }
+
+/* ---------- Layout ---------- */
+#main { flex: 1; display: flex; min-height: 0; }
+#sidebar { width: 210px; flex: none; background: var(--bg2); border-right: 1px solid var(--line); padding: 10px 0; overflow-y: auto; }
+#sidebar h4 { margin: 12px 14px 6px; font-size: 10px; letter-spacing: 1px; color: var(--dim); text-transform: uppercase; font-weight: normal; }
+#sidebar .nav { display: block; width: 100%; text-align: left; border: none; border-left: 2px solid transparent; border-radius: 0; background: none; padding: 7px 14px; color: var(--dim); }
+#sidebar .nav:hover { color: var(--text); background: var(--bg3); }
+#sidebar .nav.active { color: var(--text); border-left-color: var(--orange); background: var(--bg3); }
+#sidebar .nav .ic { display: inline-block; width: 18px; color: var(--blue); }
+#content { flex: 1; overflow: auto; padding: 14px; min-width: 0; }
+.view { display: none; }
+.view.active { display: block; }
+
+/* ---------- Panels ---------- */
+.grid { display: grid; gap: 12px; }
+.g4 { grid-template-columns: repeat(4, 1fr); }
+.g2 { grid-template-columns: 2fr 1fr; }
+.g2e { grid-template-columns: 1fr 1fr; }
+.panel { background: var(--bg2); border: 1px solid var(--line); border-radius: 6px; min-width: 0; }
+.panel > .ph { display: flex; align-items: center; justify-content: space-between; padding: 7px 12px; border-bottom: 1px solid var(--line); color: var(--dim); font-size: 11px; }
+.panel > .ph .t { color: var(--text); }
+.panel > .pb { padding: 12px; }
+.stat .v { font-size: 22px; color: var(--text); }
+.stat .d { font-size: 11px; color: var(--green); }
+.stat .d.bad { color: var(--red); }
+.kv { display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px dashed #30363d88; }
+.kv span:first-child { color: var(--dim); }
+canvas { display: block; max-width: 100%; }
+.log { height: 260px; overflow: hidden; font-size: 11.5px; line-height: 1.55; white-space: pre; }
+.k { color: var(--blue); } .s { color: var(--green); } .n { color: var(--orange); } .p { color: var(--purple); } .r { color: var(--red); } .c { color: var(--dim); } .cy { color: var(--cyan); }
+.bar { height: 6px; background: var(--bg3); border-radius: 3px; overflow: hidden; margin-top: 4px; }
+.bar > i { display: block; height: 100%; background: var(--blue); }
+.hint { color: var(--dim); font-size: 11px; margin-top: 8px; }
+
+/* ---------- Shop rows ---------- */
+.row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 0; border-bottom: 1px solid #30363d88; }
+.row .nm { color: var(--text); }
+.row .ds { color: var(--dim); font-size: 11px; }
+.row .lv { color: var(--purple); font-size: 11px; }
+
+/* ---------- Terminal ---------- */
+#term { height: calc(100vh - 140px); min-height: 360px; display: flex; flex-direction: column; background: #010409; border: 1px solid var(--line); border-radius: 6px; }
+#termOut { flex: 1; overflow-y: auto; padding: 10px 12px; white-space: pre-wrap; word-break: break-word; line-height: 1.5; }
+#termIn { display: flex; padding: 6px 12px; border-top: 1px solid var(--line); }
+#termPrompt { color: var(--green); white-space: pre; }
+#termInput { flex: 1; background: none; border: none; outline: none; color: var(--text); font-size: 13px; }
+
+#statusbar { height: 22px; flex: none; display: flex; align-items: center; gap: 18px; padding: 0 12px; background: #1f6feb; color: #fff; font-size: 11px; }
+#statusbar .spacer { flex: 1; }
+
+@media (max-width: 900px) {
+  .g4 { grid-template-columns: repeat(2, 1fr); }
+  .g2, .g2e { grid-template-columns: 1fr; }
+  #sidebar { width: 52px; }
+  #sidebar h4, #sidebar .lbl { display: none; }
+  #cmdk { display: none; }
+}
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <span class="brand">&#9650; devops-console</span>
+  <span class="crumb">org / <b>platform-eng</b> / cluster-prod-eu1 / <b id="crumbView">overview</b></span>
+  <span class="spacer"></span>
+  <input id="cmdk" placeholder="&gt; run command (Esc = overview)" autocomplete="off">
+  <span class="pill ok" id="pillHealth">&#9679; healthy</span>
+  <span class="pill" id="pillClock">--:--:--</span>
+</div>
+
+<div id="main">
+  <nav id="sidebar">
+    <h4>Workspace</h4>
+    <button class="nav active" data-view="dash"><span class="ic">&#9636;</span><span class="lbl">Overview</span></button>
+    <h4>Pipelines</h4>
+    <button class="nav" data-view="snake"><span class="ic">&#8644;</span><span class="lbl">Network Flow</span></button>
+    <button class="nav" data-view="tetris"><span class="ic">&#9638;</span><span class="lbl">DB Defragmenter</span></button>
+    <h4>Operations</h4>
+    <button class="nav" data-view="idle"><span class="ic">&#9881;</span><span class="lbl">Task Automation</span></button>
+  </nav>
+
+  <div id="content">
+
+    <!-- ======================= MODULE A: DASHBOARD ======================= -->
+    <section class="view active" id="view-dash">
+      <div class="grid g4">
+        <div class="panel stat"><div class="ph"><span>requests / s</span><span>p50</span></div><div class="pb"><div class="v" id="stRps">0</div><div class="d" id="stRpsD">+0.0%</div></div></div>
+        <div class="panel stat"><div class="ph"><span>p99 latency</span><span>ms</span></div><div class="pb"><div class="v" id="stLat">0</div><div class="d" id="stLatD">within SLO</div></div></div>
+        <div class="panel stat"><div class="ph"><span>error rate</span><span>5m</span></div><div class="pb"><div class="v" id="stErr">0</div><div class="d" id="stErrD">budget ok</div></div></div>
+        <div class="panel stat"><div class="ph"><span>pods ready</span><span>k8s</span></div><div class="pb"><div class="v" id="stPods">0/0</div><div class="d" id="stPodsD">rollout stable</div></div></div>
+      </div>
+      <div class="grid g2" style="margin-top:12px">
+        <div class="panel"><div class="ph"><span class="t">throughput.ingress — eu1-a / eu1-b / eu1-c</span><span>live · 1s</span></div><div class="pb"><canvas id="chartMain" height="240"></canvas></div></div>
+        <div class="panel"><div class="ph"><span class="t">node utilisation</span><span>cpu / mem</span></div><div class="pb" id="nodeList"></div></div>
+      </div>
+      <div class="grid g2" style="margin-top:12px">
+        <div class="panel"><div class="ph"><span class="t">stdout — api-gateway (json)</span><span id="logRate">0 lines/s</span></div><div class="pb"><div class="log" id="logStream"></div></div></div>
+        <div class="panel"><div class="ph"><span class="t">deployments</span><span>argo</span></div><div class="pb" id="deployList"></div></div>
+      </div>
+    </section>
+
+    <!-- ======================= GAME 1: SNAKE ======================= -->
+    <section class="view" id="view-snake">
+      <div class="grid g2">
+        <div class="panel"><div class="ph"><span class="t">packet-route-visualiser — topology trace</span><span id="snStatus">idle</span></div>
+          <div class="pb"><canvas id="snakeCanvas" width="600" height="400"></canvas>
+          <div class="hint">arrows / WASD: steer route · space: start / pause · Esc: overview</div></div></div>
+        <div class="panel"><div class="ph"><span class="t">route metrics</span><span>session</span></div>
+          <div class="pb">
+            <div class="kv"><span>packets (score)</span><span id="snScore">0</span></div>
+            <div class="kv"><span>best trace</span><span id="snBest">0</span></div>
+            <div class="kv"><span>bandwidth credits</span><span id="snCredits" class="s">0</span></div>
+            <div class="kv"><span>tick interval</span><span id="snTick">0ms</span></div>
+            <h4 style="margin:14px 0 4px;color:var(--dim);font-weight:normal;font-size:11px">// module store</h4>
+            <div id="snShop"></div>
+          </div></div>
+      </div>
+    </section>
+
+    <!-- ======================= GAME 2: TETRIS ======================= -->
+    <section class="view" id="view-tetris">
+      <div class="grid g2e" style="grid-template-columns:auto 1fr">
+        <div class="panel"><div class="ph"><span class="t">sector-map /dev/sda1</span><span id="tStatus">idle</span></div>
+          <div class="pb"><canvas id="tetrisCanvas" width="250" height="500"></canvas></div></div>
+        <div class="panel"><div class="ph"><span class="t">defrag.exe — compaction job</span><span>blocks</span></div>
+          <div class="pb">
+            <div class="kv"><span>next allocation</span><span></span></div>
+            <canvas id="tetrisNext" width="100" height="80" style="margin:6px 0"></canvas>
+            <div class="kv"><span>hold buffer</span><span></span></div>
+            <canvas id="tetrisHold" width="100" height="80" style="margin:6px 0"></canvas>
+            <div class="kv"><span>bytes compacted (score)</span><span id="tScore">0</span></div>
+            <div class="kv"><span>sectors freed (lines)</span><span id="tLines">0</span></div>
+            <div class="kv"><span>io priority (level)</span><span id="tLevel">1</span></div>
+            <div class="kv"><span>best run</span><span id="tBest">0</span></div>
+            <div class="hint">← → move · ↑ / X rotate · Z rotate ccw · ↓ soft · space hard drop · C hold · P pause · Enter start</div>
+          </div></div>
+      </div>
+    </section>
+
+    <!-- ======================= MODULE C: IDLE ======================= -->
+    <section class="view" id="view-idle">
+      <div class="grid g4">
+        <div class="panel stat"><div class="ph"><span>compute credits</span><span>balance</span></div><div class="pb"><div class="v" id="idCredits">0</div><div class="d" id="idRate">+0 /s</div></div></div>
+        <div class="panel stat"><div class="ph"><span>manual deploy</span><span>per click</span></div><div class="pb"><div class="v" id="idClick">1</div><div class="d">&nbsp;</div></div></div>
+        <div class="panel stat"><div class="ph"><span>global multiplier</span><span>x</span></div><div class="pb"><div class="v" id="idMult">1.00</div><div class="d">&nbsp;</div></div></div>
+        <div class="panel stat"><div class="ph"><span>lifetime earned</span><span>total</span></div><div class="pb"><div class="v" id="idTotal">0</div><div class="d" id="idOffline">&nbsp;</div></div></div>
+      </div>
+      <div class="grid g2e" style="margin-top:12px">
+        <div class="panel"><div class="ph"><span class="t">infrastructure</span><span>buy x<select id="idBuyQty" style="background:var(--bg);color:var(--text);border:1px solid var(--line);font-family:var(--mono)"><option>1</option><option>10</option><option>25</option></select></span></div>
+          <div class="pb">
+            <button id="idDeployBtn" style="width:100%;padding:14px;font-size:14px;color:var(--green);border-color:#23863688">$ kubectl apply -f deploy.yaml</button>
+            <div id="idBuildings" style="margin-top:8px"></div>
+          </div></div>
+        <div class="panel"><div class="ph"><span class="t">optimisations</span><span>one-time</span></div>
+          <div class="pb"><div id="idUpgrades"></div>
+          <div class="hint" style="margin-top:14px">progress saves automatically and keeps running while the tab is closed (up to 8h).</div>
+          <button id="idReset" style="margin-top:8px;color:var(--red)">wipe cluster state</button></div></div>
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<div id="statusbar">
+  <span>&#9095; main*</span><span>&#10003; 0 problems</span><span id="sbView">overview</span>
+  <span class="spacer"></span><span id="sbCpu">cpu 0%</span><span>UTF-8</span><span>LF</span><span>TypeScript</span>
+</div>
+
+<script>
+"use strict";
+
+/* ====================================================================
+   SHARED UTILITIES
+   ==================================================================== */
+const $ = (id) => document.getElementById(id);
+const rand = (a, b) => Math.random() * (b - a) + a;
+const randi = (a, b) => Math.floor(rand(a, b + 1));
+const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+function fmt(n) {
+  if (!isFinite(n)) return "∞";
+  const units = ["", "K", "M", "B", "T", "Qa", "Qi", "Sx"];
+  let u = 0;
+  while (Math.abs(n) >= 1000 && u < units.length - 1) { n /= 1000; u++; }
+  return (u === 0 ? Math.floor(n).toString() : n.toFixed(2)) + units[u];
+}
+function esc(s) {
+  return String(s).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
+}
+
+const Store = {
+  load(key, fallback) {
+    try {
+      const raw = localStorage.getItem("dvc_" + key);
+      return raw ? Object.assign({}, fallback, JSON.parse(raw)) : Object.assign({}, fallback);
+    } catch (e) { return Object.assign({}, fallback); }
+  },
+  save(key, value) {
+    try { localStorage.setItem("dvc_" + key, JSON.stringify(value)); } catch (e) { /* storage unavailable */ }
+  },
+  remove(key) {
+    try { localStorage.removeItem("dvc_" + key); } catch (e) { /* storage unavailable */ }
+  }
+};
+
+/* ====================================================================
+   NAVIGATION / SHELL
+   ==================================================================== */
+const VIEW_LABELS = { dash: "overview", snake: "network-flow", tetris: "db-defrag", idle: "task-automation" };
+let currentView = "dash";
+
+function showView(name) {
+  if (!VIEW_LABELS[name]) return;
+  if (currentView === "snake" && name !== "snake") Snake.pause();
+  if (currentView === "tetris" && name !== "tetris") Tetris.pause();
+  currentView = name;
+  document.querySelectorAll(".view").forEach((v) => v.classList.toggle("active", v.id === "view-" + name));
+  document.querySelectorAll(".nav").forEach((b) => b.classList.toggle("active", b.dataset.view === name));
+  $("crumbView").textContent = VIEW_LABELS[name];
+  $("sbView").textContent = VIEW_LABELS[name];
+  if (name === "dash") Dashboard.resize();
+}
+
+document.querySelectorAll(".nav").forEach((b) => b.addEventListener("click", () => showView(b.dataset.view)));
+
+// Boss key: Escape always returns to the overview dashboard and pauses games.
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") { e.preventDefault(); showView("dash"); $("cmdk").blur(); }
+});
+
+$("cmdk").addEventListener("keydown", (e) => {
+  if (e.key !== "Enter") return;
+  const v = e.target.value.trim().toLowerCase();
+  const map = { overview: "dash", dash: "dash", flow: "snake", network: "snake", defrag: "tetris", db: "tetris", automation: "idle", tasks: "idle" };
+  const hit = Object.keys(map).find((k) => v.includes(k));
+  if (hit) showView(map[hit]);
+  e.target.value = "";
+  e.target.blur();
+});
+
+setInterval(() => {
+  const d = new Date();
+  $("pillClock").textContent = d.toTimeString().slice(0, 8) + " UTC" + (d.getTimezoneOffset() <= 0 ? "+" : "-") + Math.abs(d.getTimezoneOffset() / 60);
+  $("sbCpu").textContent = "cpu " + randi(18, 64) + "%";
+}, 1000);
+
+/* ====================================================================
+   MODULE A: DASHBOARD
+   ==================================================================== */
+const Dashboard = (() => {
+  const canvas = $("chartMain");
+  const ctx = canvas.getContext("2d");
+  const series = [
+    { name: "eu1-a", color: "#58a6ff", data: [], base: 820 },
+    { name: "eu1-b", color: "#3fb950", data: [], base: 610 },
+    { name: "eu1-c", color: "#bc8cff", data: [], base: 430 }
+  ];
+  const N = 90;
+  series.forEach((s) => { for (let i = 0; i < N; i++) s.data.push(s.base + rand(-60, 60)); });
+
+  const nodes = [];
+  for (let i = 0; i < 6; i++) nodes.push({ name: "ip-10-0-" + randi(1, 9) + "-" + randi(10, 250), cpu: rand(20, 70), mem: rand(30, 80) });
+
+  const services = ["auth-svc", "billing-api", "search-indexer", "notif-worker", "edge-proxy", "ledger-db", "media-transcoder"];
+  const deploys = services.slice(0, 6).map((s) => ({ svc: s, ver: "v" + randi(1, 4) + "." + randi(0, 20) + "." + randi(0, 9), state: "Synced", prog: 100 }));
+
+  const logEl = $("logStream");
+  const logLines = [];
+  let linesThisSecond = 0;
+
+  function resize() {
+    const w = canvas.parentElement.clientWidth - 24;
+    if (w > 0) canvas.width = w;
+    draw();
+  }
+
+  function draw() {
+    const W = canvas.width, H = canvas.height;
+    ctx.clearRect(0, 0, W, H);
+    ctx.strokeStyle = "#30363d"; ctx.lineWidth = 1;
+    ctx.fillStyle = "#8b949e"; ctx.font = "10px monospace";
+    const max = 1100;
+    for (let i = 0; i <= 4; i++) {
+      const y = 10 + (H - 30) * i / 4;
+      ctx.beginPath(); ctx.moveTo(40, y); ctx.lineTo(W, y); ctx.stroke();
+      ctx.fillText(Math.round(max - max * i / 4), 2, y + 3);
+    }
+    series.forEach((s) => {
+      ctx.strokeStyle = s.color; ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      s.data.forEach((v, i) => {
+        const x = 40 + (W - 40) * i / (N - 1);
+        const y = 10 + (H - 30) * (1 - v / max);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+    });
+    let lx = 44;
+    series.forEach((s) => {
+      ctx.fillStyle = s.color; ctx.fillRect(lx, H - 12, 8, 8);
+      ctx.fillStyle = "#8b949e"; ctx.fillText(s.name + " " + Math.round(s.data[N - 1]) + " rps", lx + 12, H - 4);
+      lx += 120;
+    });
+  }
+
+  function renderNodes() {
+    $("nodeList").innerHTML = nodes.map((n) => {
+      const cc = n.cpu > 85 ? "var(--red)" : n.cpu > 65 ? "var(--orange)" : "var(--blue)";
+      return '<div style="margin-bottom:9px"><div class="kv" style="border:none"><span>' + n.name + '</span><span>' + n.cpu.toFixed(0) + "% / " + n.mem.toFixed(0) + '%</span></div>' +
+        '<div class="bar"><i style="width:' + n.cpu + "%;background:" + cc + '"></i></div>' +
+        '<div class="bar"><i style="width:' + n.mem + '%;background:var(--purple)"></i></div></div>';
+    }).join("");
+  }
+
+  function renderDeploys() {
+    $("deployList").innerHTML = deploys.map((d) => {
+      const col = d.state === "Synced" ? "s" : d.state === "Degraded" ? "r" : "n";
+      return '<div class="row"><div><div class="nm">' + d.svc + '</div><div class="ds">' + d.ver + '</div></div><div style="text-align:right;min-width:90px"><span class="' + col + '">' + d.state + '</span>' +
+        '<div class="bar"><i style="width:' + d.prog + '%"></i></div></div></div>';
+    }).join("");
+  }
+
+  function makeLogLine() {
+    const ts = new Date().toISOString();
+    const lvl = Math.random() < 0.06 ? "warn" : Math.random() < 0.02 ? "error" : "info";
+    const methods = ["GET", "POST", "PUT", "DELETE"];
+    const paths = ["/v2/users", "/v2/orders", "/healthz", "/v2/search", "/v1/tokens/refresh", "/v2/invoices", "/metrics"];
+    const status = lvl === "error" ? pick([500, 502, 503]) : lvl === "warn" ? pick([404, 429]) : pick([200, 200, 200, 201, 204]);
+    const lc = lvl === "error" ? "r" : lvl === "warn" ? "n" : "s";
+    return '<span class="c">{</span><span class="k">"ts"</span>:<span class="s">"' + ts + '"</span>,<span class="k">"lvl"</span>:<span class="' + lc + '">"' + lvl + '"</span>,' +
+      '<span class="k">"method"</span>:<span class="s">"' + pick(methods) + '"</span>,<span class="k">"path"</span>:<span class="s">"' + pick(paths) + '"</span>,' +
+      '<span class="k">"status"</span>:<span class="n">' + status + '</span>,<span class="k">"dur_ms"</span>:<span class="n">' + rand(1, lvl === "info" ? 80 : 900).toFixed(1) + '</span>,' +
+      '<span class="k">"trace"</span>:<span class="p">"' + Math.random().toString(16).slice(2, 14) + '"</span><span class="c">}</span>';
+  }
+
+  function pushLog() {
+    logLines.push(makeLogLine());
+    if (logLines.length > 18) logLines.shift();
+    logEl.innerHTML = logLines.join("\n");
+    linesThisSecond++;
+  }
+
+  function tick() {
+    let total = 0;
+    series.forEach((s) => {
+      const last = s.data[s.data.length - 1];
+      let next = last + rand(-40, 40) + (s.base - last) * 0.08;
+      if (Math.random() < 0.02) next += rand(100, 220);
+      s.data.push(Math.max(50, Math.min(1080, next)));
+      s.data.shift();
+      total += next;
+    });
+    const prev = parseFloat($("stRps").dataset.v || total);
+    $("stRps").textContent = Math.round(total).toLocaleString();
+    $("stRps").dataset.v = total;
+    const pct = (total - prev) / prev * 100;
+    $("stRpsD").textContent = (pct >= 0 ? "+" : "") + pct.toFixed(1) + "%";
+    $("stRpsD").className = "d" + (pct < -3 ? " bad" : "");
+    const lat = rand(120, 260);
+    $("stLat").textContent = lat.toFixed(0);
+    $("stLatD").textContent = lat > 240 ? "approaching SLO" : "within SLO";
+    $("stLatD").className = "d" + (lat > 240 ? " bad" : "");
+    const err = rand(0.01, 0.6);
+    $("stErr").textContent = err.toFixed(2) + "%";
+    $("stErrD").className = "d" + (err > 0.5 ? " bad" : "");
+    $("stErrD").textContent = err > 0.5 ? "burning budget" : "budget ok";
+    const ready = randi(46, 48);
+    $("stPods").textContent = ready + "/48";
+    $("stPodsD").textContent = ready === 48 ? "rollout stable" : "rolling update";
+
+    nodes.forEach((n) => {
+      n.cpu = Math.max(5, Math.min(98, n.cpu + rand(-6, 6)));
+      n.mem = Math.max(10, Math.min(95, n.mem + rand(-2, 2)));
+    });
+    deploys.forEach((d) => {
+      if (d.state === "Progressing") {
+        d.prog = Math.min(100, d.prog + randi(5, 18));
+        if (d.prog >= 100) d.state = Math.random() < 0.1 ? "Degraded" : "Synced";
+      } else if (Math.random() < 0.03) {
+        d.state = "Progressing"; d.prog = 0;
+        d.ver = "v" + randi(1, 4) + "." + randi(0, 20) + "." + randi(0, 9);
+      } else if (d.state === "Degraded" && Math.random() < 0.2) {
+        d.state = "Synced";
+      }
+    });
+    $("logRate").textContent = linesThisSecond + " lines/s";
+    linesThisSecond = 0;
+    renderNodes();
+    renderDeploys();
+    if (currentView === "dash") draw();
+  }
+
+  function scheduleLog() {
+    pushLog();
+    setTimeout(scheduleLog, rand(80, 420));
+  }
+
+  window.addEventListener("resize", resize);
+  resize();
+  renderNodes();
+  renderDeploys();
+  setInterval(tick, 1000);
+  scheduleLog();
+  return { resize };
+})();
+
+/* ====================================================================
+   GAME 1: NETWORK DATA FLOW (SNAKE)
+   ==================================================================== */
+const Snake = (() => {
+  const canvas = $("snakeCanvas");
+  const ctx = canvas.getContext("2d");
+  const CELL = 20, COLS = canvas.width / CELL, ROWS = canvas.height / CELL;
+
+  const save = Store.load("snake", { credits: 0, best: 0, speed: 0, mult: 0, wrap: 0, shield: 0, magnet: 0 });
+
+  const SHOP = [
+    { id: "speed", name: "QoS throttle", desc: "slows the route tick by 8ms per level", max: 6, cost: (l) => 30 * Math.pow(2, l) },
+    { id: "mult", name: "Packet multiplexer", desc: "+1x points per packet per level", max: 5, cost: (l) => 50 * Math.pow(2.2, l) },
+    { id: "wrap", name: "Edge tunneling", desc: "pass through walls to the opposite side", max: 1, cost: () => 250 },
+    { id: "shield", name: "Failover replica", desc: "survive one self-collision per run per level", max: 3, cost: (l) => 120 * Math.pow(2.5, l) },
+    { id: "magnet", name: "Bonus packet spawner", desc: "golden packets (5x) appear more often", max: 4, cost: (l) => 80 * Math.pow(2, l) }
+  ];
+
+  let body, dir, nextDir, food, bonus, score, running, alive, shieldsLeft, timer, flash;
+
+  function tickMs() { return 110 + save.speed * 8 - Math.min(40, Math.floor(score / 50) * 2); }
+
+  function reset() {
+    body = [{ x: 10, y: 10 }, { x: 9, y: 10 }, { x: 8, y: 10 }];
+    dir = { x: 1, y: 0 }; nextDir = dir;
+    score = 0; alive = true; running = false; bonus = null; flash = 0;
+    shieldsLeft = save.shield;
+    placeFood();
+    updateHud(); draw();
+    $("snStatus").textContent = "ready — press space";
+  }
+
+  function freeCell() {
+    let c;
+    do { c = { x: randi(0, COLS - 1), y: randi(0, ROWS - 1) }; }
+    while (body.some((b) => b.x === c.x && b.y === c.y) || (food && food.x === c.x && food.y === c.y));
+    return c;
+  }
+  function placeFood() { food = freeCell(); }
+
+  function step() {
+    dir = nextDir;
+    let head = { x: body[0].x + dir.x, y: body[0].y + dir.y };
+    if (head.x < 0 || head.y < 0 || head.x >= COLS || head.y >= ROWS) {
+      if (save.wrap) {
+        head.x = (head.x + COLS) % COLS;
+        head.y = (head.y + ROWS) % ROWS;
+      } else return die("route left topology bounds");
+    }
+    const hitSelf = body.slice(0, -1).some((b) => b.x === head.x && b.y === head.y);
+    if (hitSelf) {
+      if (shieldsLeft > 0) {
+        shieldsLeft--; flash = 6;
+        body = body.slice(0, Math.max(3, Math.floor(body.length / 2)));
+        updateHud();
+        return schedule();
+      }
+      return die("routing loop detected");
+    }
+    body.unshift(head);
+    const mult = 1 + save.mult;
+    if (head.x === food.x && head.y === food.y) {
+      score += 10 * mult;
+      placeFood();
+      if (!bonus && Math.random() < 0.12 + save.magnet * 0.07) bonus = Object.assign(freeCell(), { ttl: 60 });
+    } else if (bonus && head.x === bonus.x && head.y === bonus.y) {
+      score += 50 * mult;
+      bonus = null;
+      body.push(Object.assign({}, body[body.length - 1]));
+      body.pop();
+    } else {
+      body.pop();
+    }
+    if (bonus && --bonus.ttl <= 0) bonus = null;
+    updateHud(); draw();
+    schedule();
+  }
+
+  function schedule() {
+    clearTimeout(timer);
+    if (running && alive) timer = setTimeout(step, tickMs());
+  }
+
+  function die(reason) {
+    alive = false; running = false;
+    const earned = Math.floor(score / 5);
+    save.credits += earned;
+    if (score > save.best) save.best = score;
+    Store.save("snake", save);
+    $("snStatus").textContent = "trace terminated";
+    draw();
+    ctx.fillStyle = "rgba(1,4,9,0.82)"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#f85149"; ctx.font = "16px monospace"; ctx.textAlign = "center";
+    ctx.fillText("ERR_CONNECTION_RESET: " + reason, canvas.width / 2, canvas.height / 2 - 14);
+    ctx.fillStyle = "#3fb950";
+    ctx.fillText("+" + earned + " bandwidth credits  ·  space to re-trace", canvas.width / 2, canvas.height / 2 + 14);
+    ctx.textAlign = "left";
+    updateHud(); renderShop();
+  }
+
+  function draw() {
+    ctx.fillStyle = "#010409"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = "#161b22"; ctx.lineWidth = 1;
+    for (let x = 0; x <= COLS; x++) { ctx.beginPath(); ctx.moveTo(x * CELL, 0); ctx.lineTo(x * CELL, canvas.height); ctx.stroke(); }
+    for (let y = 0; y <= ROWS; y++) { ctx.beginPath(); ctx.moveTo(0, y * CELL); ctx.lineTo(canvas.width, y * CELL); ctx.stroke(); }
+    ctx.font = "11px monospace";
+    ctx.fillStyle = "#d29922"; ctx.fillRect(food.x * CELL + 4, food.y * CELL + 4, CELL - 8, CELL - 8);
+    if (bonus) {
+      ctx.fillStyle = bonus.ttl % 6 < 3 ? "#ffd33d" : "#bc8cff";
+      ctx.beginPath(); ctx.arc(bonus.x * CELL + CELL / 2, bonus.y * CELL + CELL / 2, CELL / 2 - 2, 0, Math.PI * 2); ctx.fill();
+    }
+    body.forEach((b, i) => {
+      const t = 1 - i / (body.length + 4);
+      ctx.fillStyle = flash > 0 && flash % 2 ? "#f85149" : "rgba(63,185,80," + (0.35 + 0.65 * t) + ")";
+      ctx.fillRect(b.x * CELL + 1, b.y * CELL + 1, CELL - 2, CELL - 2);
+      if (i === 0) { ctx.fillStyle = "#010409"; ctx.fillText(">", b.x * CELL + 6, b.y * CELL + 14); }
+    });
+    if (flash > 0) flash--;
+    ctx.fillStyle = "#8b949e";
+    ctx.fillText("hops=" + body.length + "  replicas=" + shieldsLeft + (save.wrap ? "  tunneling=on" : ""), 6, canvas.height - 6);
+  }
+
+  function updateHud() {
+    $("snScore").textContent = score;
+    $("snBest").textContent = save.best;
+    $("snCredits").textContent = save.credits;
+    $("snTick").textContent = tickMs() + "ms";
+  }
+
+  function renderShop() {
+    $("snShop").innerHTML = SHOP.map((it) => {
+      const lvl = save[it.id];
+      const maxed = lvl >= it.max;
+      const cost = Math.floor(it.cost(lvl));
+      return '<div class="row"><div><div class="nm">' + it.name + ' <span class="lv">[' + lvl + "/" + it.max + ']</span></div><div class="ds">' + it.desc + '</div></div>' +
+        '<button data-sn="' + it.id + '"' + (maxed || save.credits < cost ? " disabled" : "") + ">" + (maxed ? "max" : cost + " cr") + "</button></div>";
+    }).join("");
+    $("snShop").querySelectorAll("button[data-sn]").forEach((b) => b.addEventListener("click", () => buy(b.dataset.sn)));
+  }
+
+  function buy(id) {
+    const it = SHOP.find((s) => s.id === id);
+    const cost = Math.floor(it.cost(save[id]));
+    if (save[id] >= it.max || save.credits < cost) return;
+    save.credits -= cost; save[id]++;
+    Store.save("snake", save);
+    if (!running) shieldsLeft = save.shield;
+    renderShop(); updateHud();
+  }
+
+  function toggle() {
+    if (!alive) { reset(); running = true; $("snStatus").textContent = "tracing…"; return schedule(); }
+    running = !running;
+    $("snStatus").textContent = running ? "tracing…" : "paused";
+    schedule();
+  }
+
+  function pause() {
+    if (running) { running = false; clearTimeout(timer); $("snStatus").textContent = "paused"; }
+  }
+
+  document.addEventListener("keydown", (e) => {
+    if (currentView !== "snake") return;
+    const k = e.key.toLowerCase();
+    const dirs = { arrowup: [0, -1], w: [0, -1], arrowdown: [0, 1], s: [0, 1], arrowleft: [-1, 0], a: [-1, 0], arrowright: [1, 0], d: [1, 0] };
+    if (dirs[k]) {
+      e.preventDefault();
+      const [x, y] = dirs[k];
+      if (x !== -dir.x || y !== -dir.y) nextDir = { x, y };
+    } else if (k === " ") { e.preventDefault(); toggle(); }
+  });
+
+  reset(); renderShop();
+  return { pause };
+})();
+
+/* ====================================================================
+   GAME 2: DATABASE DEFRAGMENTER (TETRIS)
+   ==================================================================== */
+const Tetris = (() => {
+  const canvas = $("tetrisCanvas"), ctx = canvas.getContext("2d");
+  const nextCtx = $("tetrisNext").getContext("2d"), holdCtx = $("tetrisHold").getContext("2d");
+  const W = 10, H = 20, S = 25;
+  const COLORS = { I: "#39c5cf", O: "#d29922", T: "#bc8cff", S: "#3fb950", Z: "#f85149", J: "#58a6ff", L: "#db6d28" };
+  const SHAPES = {
+    I: [[0, 0, 0, 0], [1, 1, 1, 1], [0, 0, 0, 0], [0, 0, 0, 0]],
+    O: [[1, 1], [1, 1]],
+    T: [[0, 1, 0], [1, 1, 1], [0, 0, 0]],
+    S: [[0, 1, 1], [1, 1, 0], [0, 0, 0]],
+    Z: [[1, 1, 0], [0, 1, 1], [0, 0, 0]],
+    J: [[1, 0, 0], [1, 1, 1], [0, 0, 0]],
+    L: [[0, 0, 1], [1, 1, 1], [0, 0, 0]]
+  };
+  const KICKS = [[0, 0], [-1, 0], [1, 0], [0, -1], [-2, 0], [2, 0]];
+  const save = Store.load("tetris", { best: 0 });
+
+  let board, piece, bag, nextType, holdType, holdUsed, score, lines, level, running, over, dropAcc, lastT, raf;
+
+  function newBag() {
+    const b = Object.keys(SHAPES);
+    for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [b[i], b[j]] = [b[j], b[i]]; }
+    return b;
+  }
+  function drawType() { if (!bag.length) bag = newBag(); return bag.pop(); }
+  function spawn(type) {
+    const m = SHAPES[type].map((r) => r.slice());
+    piece = { type, m, x: Math.floor((W - m[0].length) / 2), y: type === "I" ? -1 : 0 };
+    if (collide(piece.m, piece.x, piece.y)) gameOver();
+  }
+
+  function reset() {
+    board = Array.from({ length: H }, () => Array(W).fill(null));
+    bag = newBag(); nextType = drawType(); holdType = null; holdUsed = false;
+    score = 0; lines = 0; level = 1; over = false; running = false; dropAcc = 0;
+    spawn(drawType()); nextType = drawType();
+    hud(); render();
+    $("tStatus").textContent = "ready — press enter";
+  }
+
+  function collide(m, ox, oy) {
+    for (let y = 0; y < m.length; y++)
+      for (let x = 0; x < m[y].length; x++) {
+        if (!m[y][x]) continue;
+        const bx = ox + x, by = oy + y;
+        if (bx < 0 || bx >= W || by >= H) return true;
+        if (by >= 0 && board[by][bx]) return true;
+      }
+    return false;
+  }
+
+  function rotate(m, cw) {
+    const n = m.length;
+    const r = Array.from({ length: n }, () => Array(n).fill(0));
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+      if (cw) r[x][n - 1 - y] = m[y][x]; else r[n - 1 - x][y] = m[y][x];
+    }
+    return r;
+  }
+
+  function tryRotate(cw) {
+    if (piece.type === "O") return;
+    const r = rotate(piece.m, cw);
+    for (const [kx, ky] of KICKS) {
+      if (!collide(r, piece.x + kx, piece.y + ky)) { piece.m = r; piece.x += kx; piece.y += ky; return; }
+    }
+  }
+
+  function move(dx, dy) {
+    if (!collide(piece.m, piece.x + dx, piece.y + dy)) { piece.x += dx; piece.y += dy; return true; }
+    return false;
+  }
+
+  function lock() {
+    piece.m.forEach((row, y) => row.forEach((v, x) => {
+      if (v && piece.y + y >= 0) board[piece.y + y][piece.x + x] = piece.type;
+    }));
+    if (piece.m.some((row, y) => row.some((v) => v && piece.y + y < 0))) return gameOver();
+    let cleared = 0;
+    for (let y = H - 1; y >= 0; y--) {
+      if (board[y].every((c) => c)) { board.splice(y, 1); board.unshift(Array(W).fill(null)); cleared++; y++; }
+    }
+    if (cleared) {
+      score += [0, 100, 300, 500, 800][cleared] * level;
+      lines += cleared;
+      level = 1 + Math.floor(lines / 10);
+    }
+    holdUsed = false;
+    spawn(nextType); nextType = drawType();
+    hud();
+  }
+
+  function hardDrop() {
+    let d = 0;
+    while (move(0, 1)) d++;
+    score += d * 2;
+    lock();
+  }
+
+  function hold() {
+    if (holdUsed) return;
+    const cur = piece.type;
+    if (holdType) spawn(holdType); else { spawn(nextType); nextType = drawType(); }
+    holdType = cur; holdUsed = true;
+  }
+
+  function gameOver() {
+    over = true; running = false;
+    cancelAnimationFrame(raf);
+    if (score > save.best) { save.best = score; Store.save("tetris", save); }
+    $("tStatus").textContent = "DISK FULL — enter to rescan";
+    hud(); render();
+  }
+
+  function gravity() { return Math.max(60, 800 - (level - 1) * 70); }
+
+  function loop(t) {
+    if (!running) return;
+    const dt = t - (lastT || t); lastT = t;
+    dropAcc += dt;
+    if (dropAcc >= gravity()) {
+      dropAcc = 0;
+      if (!move(0, 1)) lock();
+    }
+    render();
+    if (running) raf = requestAnimationFrame(loop);
+  }
+
+  function cell(c, x, y, color, size, ghost) {
+    if (ghost) { c.strokeStyle = color; c.strokeRect(x * size + 1.5, y * size + 1.5, size - 3, size - 3); return; }
+    c.fillStyle = color; c.fillRect(x * size + 1, y * size + 1, size - 2, size - 2);
+    c.fillStyle = "rgba(255,255,255,0.12)"; c.fillRect(x * size + 1, y * size + 1, size - 2, 3);
+  }
+
+  function preview(c, type) {
+    c.fillStyle = "#010409"; c.fillRect(0, 0, 100, 80);
+    if (!type) return;
+    const m = SHAPES[type], s = 18;
+    const ox = (100 - m[0].length * s) / 2 / s, oy = (80 - m.length * s) / 2 / s;
+    m.forEach((row, y) => row.forEach((v, x) => { if (v) cell(c, x + ox, y + oy, COLORS[type], s); }));
+  }
+
+  function render() {
+    ctx.fillStyle = "#010409"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#30363d";
+    ctx.font = "8px monospace";
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      if (board[y][x]) cell(ctx, x, y, COLORS[board[y][x]], S);
+      else ctx.fillText("·", x * S + 10, y * S + 15);
+    }
+    if (piece && !over) {
+      let gy = piece.y;
+      while (!collide(piece.m, piece.x, gy + 1)) gy++;
+      piece.m.forEach((row, y) => row.forEach((v, x) => { if (v && gy + y >= 0) cell(ctx, piece.x + x, gy + y, COLORS[piece.type], S, true); }));
+      piece.m.forEach((row, y) => row.forEach((v, x) => { if (v && piece.y + y >= 0) cell(ctx, piece.x + x, piece.y + y, COLORS[piece.type], S); }));
+    }
+    if (over || !running) {
+      ctx.fillStyle = "rgba(1,4,9,0.7)"; ctx.fillRect(0, 210, canvas.width, 70);
+      ctx.fillStyle = over ? "#f85149" : "#8b949e"; ctx.font = "13px monospace"; ctx.textAlign = "center";
+      ctx.fillText(over ? "ENOSPC: volume full" : "job suspended", canvas.width / 2, 240);
+      ctx.fillText("[enter] " + (over ? "rescan" : "resume"), canvas.width / 2, 262);
+      ctx.textAlign = "left";
+    }
+    preview(nextCtx, nextType);
+    preview(holdCtx, holdType);
+  }
+
+  function hud() {
+    $("tScore").textContent = score.toLocaleString();
+    $("tLines").textContent = lines;
+    $("tLevel").textContent = level;
+    $("tBest").textContent = save.best.toLocaleString();
+  }
+
+  function start() {
+    if (over) reset();
+    running = true; lastT = 0;
+    $("tStatus").textContent = "compacting…";
+    raf = requestAnimationFrame(loop);
+  }
+  function pause() {
+    if (!running) return;
+    running = false; cancelAnimationFrame(raf);
+    $("tStatus").textContent = "suspended"; render();
+  }
+
+  document.addEventListener("keydown", (e) => {
+    if (currentView !== "tetris") return;
+    const k = e.key.toLowerCase();
+    if (k === "enter") { e.preventDefault(); running ? pause() : start(); return; }
+    if (k === "p") { running ? pause() : start(); return; }
+    if (!running) return;
+    const handled = { arrowleft: () => move(-1, 0), arrowright: () => move(1, 0), arrowdown: () => { if (move(0, 1)) score += 1; else lock(); dropAcc = 0; },
+      arrowup: () => tryRotate(true), x: () => tryRotate(true), z: () => tryRotate(false), " ": hardDrop, c: hold };
+    if (handled[k]) { e.preventDefault(); handled[k](); hud(); render(); }
+  });
+
+  reset();
+  return { pause };
+})();
+
+/* ====================================================================
+   MODULE C: IDLE SYSTEM AUTOMATION
+   ==================================================================== */
+const Idle = (() => {
+  const BUILDINGS = [
+    { id: "vm", name: "Spot VM instance", base: 15, rate: 0.2 },
+    { id: "ctr", name: "Container cluster", base: 120, rate: 1.5 },
+    { id: "ci", name: "CI/CD pipeline", base: 1100, rate: 9 },
+    { id: "miner", name: "Hash-rate script", base: 12000, rate: 55 },
+    { id: "farm", name: "Server farm", base: 140000, rate: 320 },
+    { id: "dc", name: "Regional datacenter", base: 2000000, rate: 2100 },
+    { id: "q", name: "Quantum compute node", base: 33000000, rate: 15000 }
+  ];
+  const UPGRADES = [
+    { id: "u1", name: "Enable HTTP/2", desc: "manual deploy x2", cost: 100, click: 2 },
+    { id: "u2", name: "Autoscaling policy", desc: "all output x1.5", cost: 5000, mult: 1.5 },
+    { id: "u3", name: "Edge caching", desc: "manual deploy x5", cost: 25000, click: 5 },
+    { id: "u4", name: "Kernel tuning", desc: "all output x2", cost: 250000, mult: 2 },
+    { id: "u5", name: "Custom ASICs", desc: "all output x3", cost: 5000000, mult: 3 },
+    { id: "u6", name: "Self-healing mesh", desc: "manual deploy +1% of /s", cost: 1000000, clickPct: 0.01 }
+  ];
+  const fresh = { credits: 0, total: 0, owned: {}, ups: [], last: Date.now() };
+  let st = Store.load("idle", fresh);
+  st.owned = st.owned || {}; st.ups = st.ups || [];
+
+  const has = (id) => st.ups.includes(id);
+  const mult = () => UPGRADES.reduce((m, u) => m * (has(u.id) && u.mult ? u.mult : 1), 1);
+  const rate = () => BUILDINGS.reduce((s, b) => s + (st.owned[b.id] || 0) * b.rate, 0) * mult();
+  const clickVal = () => {
+    let v = UPGRADES.reduce((m, u) => m * (has(u.id) && u.click ? u.click : 1), 1) * mult();
+    if (has("u6")) v += rate() * 0.01;
+    return v;
+  };
+  function costOf(b, qty) {
+    const n = st.owned[b.id] || 0;
+    let c = 0;
+    for (let i = 0; i < qty; i++) c += b.base * Math.pow(1.15, n + i);
+    return Math.ceil(c);
+  }
+  function earn(v) { st.credits += v; st.total += v; }
+
+  // offline progress, capped at 8 hours
+  const away = Math.min(8 * 3600, (Date.now() - st.last) / 1000);
+  if (away > 5 && rate() > 0) {
+    const gained = rate() * away;
+    earn(gained);
+    $("idOffline").textContent = "+" + fmt(gained) + " while away";
+  }
+
+  function render() {
+    const qty = parseInt($("idBuyQty").value, 10);
+    $("idBuildings").innerHTML = BUILDINGS.map((b) => {
+      const c = costOf(b, qty);
+      return '<div class="row"><div><div class="nm">' + b.name + ' <span class="lv">x' + (st.owned[b.id] || 0) + '</span></div><div class="ds">+' + fmt(b.rate * mult()) + ' /s each</div></div>' +
+        '<button data-b="' + b.id + '"' + (st.credits < c ? " disabled" : "") + ">" + fmt(c) + "</button></div>";
+    }).join("");
+    $("idUpgrades").innerHTML = UPGRADES.filter((u) => !has(u.id)).map((u) =>
+      '<div class="row"><div><div class="nm">' + u.name + '</div><div class="ds">' + u.desc + '</div></div><button data-u="' + u.id + '"' + (st.credits < u.cost ? " disabled" : "") + ">" + fmt(u.cost) + "</button></div>"
+    ).join("") || '<div class="ds">all optimisations applied</div>';
+    hud();
+  }
+  function hud() {
+    $("idCredits").textContent = fmt(st.credits);
+    $("idRate").textContent = "+" + fmt(rate()) + " /s";
+    $("idClick").textContent = fmt(clickVal());
+    $("idMult").textContent = mult().toFixed(2);
+    $("idTotal").textContent = fmt(st.total);
+  }
+
+  $("idBuildings").addEventListener("click", (e) => {
+    const id = e.target.dataset.b; if (!id) return;
+    const b = BUILDINGS.find((x) => x.id === id), qty = parseInt($("idBuyQty").value, 10), c = costOf(b, qty);
+    if (st.credits < c) return;
+    st.credits -= c; st.owned[id] = (st.owned[id] || 0) + qty; render();
+  });
+  $("idUpgrades").addEventListener("click", (e) => {
+    const u = UPGRADES.find((x) => x.id === e.target.dataset.u);
+    if (!u || st.credits < u.cost) return;
+    st.credits -= u.cost; st.ups.push(u.id); render();
+  });
+  $("idBuyQty").addEventListener("change", render);
+  $("idDeployBtn").addEventListener("click", () => { earn(clickVal()); hud(); });
+  $("idReset").addEventListener("click", () => {
+    if (!confirm("Wipe all automation progress?")) return;
+    st = Object.assign({}, fresh, { owned: {}, ups: [], last: Date.now() }); Store.remove("idle"); render();
+  });
+
+  let lastTick = performance.now(), sinceRender = 0;
+  setInterval(() => {
+    const now = performance.now(), dt = (now - lastTick) / 1000; lastTick = now;
+    earn(rate() * dt);
+    sinceRender += dt;
+    if (sinceRender >= 1) { sinceRender = 0; render(); } else hud();
+  }, 100);
+  setInterval(() => { st.last = Date.now(); Store.save("idle", st); }, 5000);
+  window.addEventListener("beforeunload", () => { st.last = Date.now(); Store.save("idle", st); });
+  render();
+})();
+</script>
+</body>
+</html>
