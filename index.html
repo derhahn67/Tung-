@@ -26,7 +26,7 @@
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-family: var(--mono); font-size: 13px; }
 body { display: flex; flex-direction: column; overflow: hidden; height: 100dvh; -webkit-text-size-adjust: 100%; }
 button { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
-#snakeCanvas, #tetrisCanvas, #svCanvas { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; max-width: 100%; height: auto; }
+#snakeCanvas, #tetrisCanvas, #svCanvas, #flCanvas { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; max-width: 100%; height: auto; }
 .touchbar { display: none; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
 .touchbar button { flex: 1; min-width: 48px; padding: 14px 0; font-size: 18px; }
 body.touch .touchbar { display: flex; }
@@ -135,6 +135,7 @@ canvas { display: block; max-width: 100%; }
     <button class="nav" data-view="snake"><span class="ic">&#8644;</span><span class="lbl">Network Flow</span></button>
     <button class="nav" data-view="tetris"><span class="ic">&#9638;</span><span class="lbl">DB Defragmenter</span></button>
     <button class="nav" data-view="surv"><span class="ic">&#9763;</span><span class="lbl">Load Test Sim</span></button>
+    <button class="nav" data-view="flap"><span class="ic">&#10148;</span><span class="lbl">Packet Router</span></button>
     <h4>Operations</h4>
     <button class="nav" data-view="idle"><span class="ic">&#9881;</span><span class="lbl">Task Automation</span></button>
   </nav>
@@ -225,6 +226,28 @@ canvas { display: block; max-width: 100%; }
       </div>
     </section>
 
+    <!-- ======================= GAME 4: PACKET ROUTER (FLAPPY) ======================= -->
+    <section class="view" id="view-flap">
+      <div class="grid g2" style="grid-template-columns:auto 1fr">
+        <div class="panel"><div class="ph"><span class="t">packet-router — firewall traversal</span><span id="flStatus">idle</span></div>
+          <div class="pb">
+            <canvas id="flCanvas" width="360" height="560" style="max-height:calc(100dvh - 190px);width:auto;max-width:100%;margin:0 auto"></canvas>
+            <div class="hint keys">space / ↑ / click: boost packet · Esc: overview</div>
+            <div class="hint">touch: tap the screen to boost</div>
+          </div></div>
+        <div class="panel"><div class="ph"><span class="t">route stats</span><span>persistent</span></div>
+          <div class="pb">
+            <div class="kv"><span>firewalls passed (score)</span><span id="flScore">0</span></div>
+            <div class="kv"><span>best route</span><span id="flBest" class="s">0</span></div>
+            <div class="kv"><span>rank</span><span id="flRank">-</span></div>
+            <div class="kv"><span>attempts</span><span id="flRuns">0</span></div>
+            <div class="kv"><span>total packets routed</span><span id="flTotal">0</span></div>
+            <h4 style="margin:14px 0 4px;color:var(--dim);font-weight:normal;font-size:11px">// packet builds (unlock by best route)</h4>
+            <div id="flSkins"></div>
+          </div></div>
+      </div>
+    </section>
+
     <!-- ======================= MODULE C: IDLE ======================= -->
     <section class="view" id="view-idle">
       <div class="grid g4">
@@ -309,7 +332,7 @@ function bindHold(btn, fn, repeat) {
 /* ====================================================================
    NAVIGATION / SHELL
    ==================================================================== */
-const VIEW_LABELS = { dash: "overview", snake: "network-flow", tetris: "db-defrag", surv: "load-test", idle: "task-automation" };
+const VIEW_LABELS = { dash: "overview", snake: "network-flow", tetris: "db-defrag", surv: "load-test", flap: "packet-router", idle: "task-automation" };
 let currentView = "dash";
 
 function showView(name) {
@@ -317,12 +340,14 @@ function showView(name) {
   if (currentView === "snake" && name !== "snake") Snake.pause();
   if (currentView === "tetris" && name !== "tetris") Tetris.pause();
   if (currentView === "surv" && name !== "surv") Survivor.pause();
+  if (currentView === "flap" && name !== "flap") Flappy.pause();
   currentView = name;
   document.querySelectorAll(".view").forEach((v) => v.classList.toggle("active", v.id === "view-" + name));
   document.querySelectorAll(".nav").forEach((b) => b.classList.toggle("active", b.dataset.view === name));
   $("crumbView").textContent = VIEW_LABELS[name];
   $("sbView").textContent = VIEW_LABELS[name];
   if (name === "dash") Dashboard.resize();
+  if (name === "flap") Flappy.show();
 }
 
 document.querySelectorAll(".nav").forEach((b) => b.addEventListener("click", () => showView(b.dataset.view)));
@@ -335,7 +360,7 @@ document.addEventListener("keydown", (e) => {
 $("cmdk").addEventListener("keydown", (e) => {
   if (e.key !== "Enter") return;
   const v = e.target.value.trim().toLowerCase();
-  const map = { overview: "dash", dash: "dash", flow: "snake", network: "snake", defrag: "tetris", db: "tetris", load: "surv", test: "surv", automation: "idle", tasks: "idle" };
+  const map = { overview: "dash", dash: "dash", flow: "snake", network: "snake", defrag: "tetris", db: "tetris", load: "surv", route: "flap", packet: "flap", flappy: "flap", test: "surv", automation: "idle", tasks: "idle" };
   const hit = Object.keys(map).find((k) => v.includes(k));
   if (hit) showView(map[hit]);
   e.target.value = "";
@@ -1457,6 +1482,235 @@ const Survivor = (() => {
 
   fitArena(); drawIdle(); renderSide();
   return { pause };
+})();
+
+/* ====================================================================
+   GAME 4: PACKET ROUTER (FLAPPY)
+   ==================================================================== */
+const Flappy = (() => {
+  const canvas = $("flCanvas"), ctx = canvas.getContext("2d");
+  const W = canvas.width, H = canvas.height;
+  const GROUND = 56, GAP = 150, PIPE_W = 58, SPACING = 210, R = 12;
+  const GRAV = 1500, FLAP = -430, MAXFALL = 620, BASE_SPEED = 150, MAX_SPEED = 225;
+  const save = Store.load("flap", { best: 0, runs: 0, total: 0, skin: 0 });
+  const SKINS = [
+    { name: "default", color: "#3fb950", need: 0 },
+    { name: "tcp-blue", color: "#58a6ff", need: 10 },
+    { name: "udp-purple", color: "#bc8cff", need: 25 },
+    { name: "root-gold", color: "#ffd33d", need: 50 }
+  ];
+  const RANKS = [[0, "dropped"], [3, "intern"], [8, "junior"], [15, "mid-level"], [25, "senior"], [40, "staff"], [60, "principal"]];
+
+  // parallax background: server racks
+  const racks = [];
+  for (let i = 0; i < 9; i++) racks.push({ x: i * 54 + rand(0, 20), w: rand(26, 40), h: rand(70, 190) });
+
+  let state = "ready", bird, pipes, score, scroll, speed, raf = 0, lastT = 0, active = false, deadT = 0, flash = 0, clock = 0, newBest = false;
+
+  const rank = (n) => { let r = RANKS[0][1]; RANKS.forEach((x) => { if (n >= x[0]) r = x[1]; }); return r; };
+
+  function reset() {
+    state = "ready"; score = 0; scroll = 0; speed = BASE_SPEED; deadT = 0; flash = 0; newBest = false;
+    bird = { x: 92, y: (H - GROUND) / 2, vy: 0, rot: 0 };
+    pipes = [];
+    spawnPipe(W + 110);
+    $("flStatus").textContent = "ready — tap to boost";
+    hud();
+  }
+
+  function spawnPipe(x) {
+    const prev = pipes.length ? pipes[pipes.length - 1].gapY : (H - GROUND) / 2 - GAP / 2;
+    const lo = 70, hi = H - GROUND - GAP - 70;
+    const gapY = Math.max(lo, Math.min(hi, prev + rand(-170, 170)));
+    pipes.push({ x, gapY, passed: false });
+  }
+
+  function flap() {
+    if (state === "dead") {
+      if (deadT > 0.45) reset();
+      return;
+    }
+    if (state === "paused") { state = "playing"; $("flStatus").textContent = "routing…"; }
+    if (state === "ready") { state = "playing"; $("flStatus").textContent = "routing…"; }
+    bird.vy = FLAP;
+  }
+
+  function die() {
+    if (state === "dead") return;
+    state = "dead"; deadT = 0; flash = 0.25;
+    bird.vy = Math.max(bird.vy, -120);
+    save.runs++; save.total += score;
+    if (score > save.best) { save.best = score; newBest = true; }
+    Store.save("flap", save);
+    $("flStatus").textContent = "packet dropped";
+    hud(); renderSkins();
+  }
+
+  function update(dt) {
+    clock += dt;
+    if (state === "paused") return;
+    if (state === "ready") {
+      bird.y = (H - GROUND) / 2 + Math.sin(clock * 5) * 7;
+      bird.rot = 0;
+      scroll += speed * dt;
+      return;
+    }
+    if (state === "playing") scroll += speed * dt;
+    if (flash > 0) flash -= dt;
+
+    bird.vy = Math.min(MAXFALL, bird.vy + GRAV * dt);
+    bird.y += bird.vy * dt;
+    bird.rot = Math.max(-0.5, Math.min(1.3, bird.vy / 480));
+
+    if (state === "dead") {
+      deadT += dt;
+      if (bird.y + R >= H - GROUND) { bird.y = H - GROUND - R; bird.vy = 0; }
+      return;
+    }
+
+    if (bird.y - R < 0) { bird.y = R; bird.vy = 0; }
+    if (bird.y + R >= H - GROUND) { bird.y = H - GROUND - R; return die(); }
+
+    pipes.forEach((p) => { p.x -= speed * dt; });
+    while (pipes[pipes.length - 1].x < W + SPACING) spawnPipe(pipes[pipes.length - 1].x + SPACING);
+    pipes = pipes.filter((p) => p.x > -PIPE_W - 12);
+
+    for (const p of pipes) {
+      if (!p.passed && p.x + PIPE_W < bird.x - R) {
+        p.passed = true; score++;
+        speed = Math.min(MAX_SPEED, BASE_SPEED + score * 3);
+        hud();
+      }
+      if (bird.x + R - 2 > p.x && bird.x - R + 2 < p.x + PIPE_W && (bird.y - R + 2 < p.gapY || bird.y + R - 2 > p.gapY + GAP)) return die();
+    }
+  }
+
+  function pipeRect(x, y, h, cap) {
+    ctx.fillStyle = "#161b22"; ctx.fillRect(x, y, PIPE_W, h);
+    ctx.strokeStyle = "rgba(248,81,73,0.16)"; ctx.lineWidth = 1;
+    for (let yy = y + 8; yy < y + h; yy += 12) { ctx.beginPath(); ctx.moveTo(x, yy); ctx.lineTo(x + PIPE_W, yy); ctx.stroke(); }
+    ctx.strokeStyle = "#f85149"; ctx.lineWidth = 2; ctx.strokeRect(x + 1, y + 1, PIPE_W - 2, h - 2);
+    ctx.fillStyle = "#f85149"; ctx.fillRect(x - 4, cap, PIPE_W + 8, 16);
+    ctx.fillStyle = "#010409"; ctx.font = "bold 10px monospace"; ctx.textAlign = "center";
+    ctx.fillText("FW", x + PIPE_W / 2, cap + 12);
+  }
+
+  function draw() {
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, "#050a14"); g.addColorStop(1, "#0b1424");
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+
+    // parallax racks
+    const rs = scroll * 0.25, total = racks.length * 54;
+    racks.forEach((r) => {
+      const x = ((r.x - rs) % total + total) % total - 40;
+      ctx.fillStyle = "#0c1626"; ctx.fillRect(x, H - GROUND - r.h, r.w, r.h);
+      ctx.fillStyle = "#13233a";
+      for (let yy = H - GROUND - r.h + 8; yy < H - GROUND - 6; yy += 14) ctx.fillRect(x + 4, yy, r.w - 8, 6);
+      ctx.fillStyle = (Math.floor(clock * 2 + x) % 3 === 0) ? "#3fb950" : "#1b3a2a";
+      ctx.fillRect(x + r.w - 8, H - GROUND - r.h + 10, 3, 3);
+    });
+
+    // pipes
+    pipes.forEach((p) => {
+      pipeRect(p.x, 0, p.gapY, p.gapY - 16);
+      pipeRect(p.x, p.gapY + GAP, H - GROUND - p.gapY - GAP, p.gapY + GAP);
+    });
+
+    // ground
+    ctx.fillStyle = "#0d1117"; ctx.fillRect(0, H - GROUND, W, GROUND);
+    ctx.fillStyle = "#30363d"; ctx.fillRect(0, H - GROUND, W, 2);
+    ctx.strokeStyle = "#1c2430"; ctx.lineWidth = 2;
+    for (let x = -(scroll % 24); x < W; x += 24) { ctx.beginPath(); ctx.moveTo(x, H - GROUND + 2); ctx.lineTo(x - 14, H); ctx.stroke(); }
+    ctx.fillStyle = "#8b949e"; ctx.font = "10px monospace"; ctx.textAlign = "left";
+    ctx.fillText("$ traceroute --hops " + score + "  ttl=" + Math.max(0, 64 - score), 8, H - 22);
+
+    // packet
+    const col = SKINS[save.skin].color;
+    ctx.save(); ctx.translate(bird.x, bird.y); ctx.rotate(bird.rot);
+    const wing = Math.sin(clock * 22) * (state === "playing" ? 5 : 2);
+    ctx.fillStyle = col; ctx.globalAlpha = 0.55;
+    ctx.beginPath(); ctx.moveTo(-6, 0); ctx.lineTo(-18, -9 - wing); ctx.lineTo(-18, 9 + wing); ctx.closePath(); ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = col; ctx.fillRect(-13, -10, 26, 20);
+    ctx.fillStyle = "rgba(255,255,255,0.18)"; ctx.fillRect(-13, -10, 26, 4);
+    ctx.fillStyle = "#010409"; ctx.font = "bold 14px monospace"; ctx.textAlign = "center"; ctx.fillText(">", 1, 5);
+    ctx.restore();
+
+    // score
+    ctx.textAlign = "center";
+    ctx.font = "bold 44px monospace"; ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.fillText(score, W / 2 + 2, 74);
+    ctx.fillStyle = "#c9d1d9"; ctx.fillText(score, W / 2, 72);
+
+    if (flash > 0) { ctx.fillStyle = "rgba(248,81,73," + flash * 2 + ")"; ctx.fillRect(0, 0, W, H); }
+
+    if (state === "ready") {
+      ctx.fillStyle = "#8b949e"; ctx.font = "13px monospace";
+      ctx.fillText("$ ./route --packet", W / 2, H / 2 + 70);
+      ctx.fillStyle = "#3fb950"; ctx.fillText("tap / space to boost", W / 2, H / 2 + 92);
+    } else if (state === "paused") {
+      ctx.fillStyle = "rgba(1,4,9,0.7)"; ctx.fillRect(0, H / 2 - 40, W, 80);
+      ctx.fillStyle = "#c9d1d9"; ctx.font = "15px monospace"; ctx.fillText("route suspended", W / 2, H / 2 - 6);
+      ctx.fillStyle = "#3fb950"; ctx.fillText("tap to resume", W / 2, H / 2 + 20);
+    } else if (state === "dead") {
+      ctx.fillStyle = "rgba(1,4,9,0.82)"; ctx.fillRect(40, H / 2 - 100, W - 80, 190);
+      ctx.strokeStyle = "#30363d"; ctx.lineWidth = 1; ctx.strokeRect(40.5, H / 2 - 99.5, W - 81, 189);
+      ctx.fillStyle = "#f85149"; ctx.font = "bold 15px monospace"; ctx.fillText("ERR_PACKET_DROPPED", W / 2, H / 2 - 70);
+      ctx.fillStyle = "#c9d1d9"; ctx.font = "13px monospace";
+      ctx.fillText("firewalls passed: " + score, W / 2, H / 2 - 40);
+      ctx.fillText("best route: " + save.best, W / 2, H / 2 - 18);
+      ctx.fillStyle = "#d29922"; ctx.fillText("rank: " + rank(score), W / 2, H / 2 + 4);
+      if (newBest && score > 0) { ctx.fillStyle = "#ffd33d"; ctx.fillText("★ new best route ★", W / 2, H / 2 + 30); }
+      if (deadT > 0.45) { ctx.fillStyle = "#3fb950"; ctx.fillText("tap to retry", W / 2, H / 2 + 66); }
+    }
+    ctx.textAlign = "left";
+  }
+
+  function hud() {
+    $("flScore").textContent = score;
+    $("flBest").textContent = save.best;
+    $("flRank").textContent = rank(save.best);
+    $("flRuns").textContent = save.runs;
+    $("flTotal").textContent = save.total;
+  }
+
+  function renderSkins() {
+    $("flSkins").innerHTML = SKINS.map((s, i) => {
+      const locked = save.best < s.need;
+      return '<div class="row"><div><div class="nm"><span style="color:' + s.color + '">&#9632;</span> ' + s.name + (save.skin === i ? ' <span class="lv">[active]</span>' : "") + '</div>' +
+        '<div class="ds">' + (s.need ? "unlock at route " + s.need : "default build") + '</div></div>' +
+        '<button data-sk="' + i + '"' + (locked || save.skin === i ? " disabled" : "") + ">" + (locked ? "locked" : save.skin === i ? "in use" : "use") + "</button></div>";
+    }).join("");
+  }
+  $("flSkins").addEventListener("click", (e) => {
+    const i = e.target.dataset.sk;
+    if (i === undefined || save.best < SKINS[i].need) return;
+    save.skin = parseInt(i, 10); Store.save("flap", save); renderSkins();
+  });
+
+  function loop(t) {
+    if (!active) return;
+    const dt = Math.min(0.033, (t - (lastT || t)) / 1000); lastT = t;
+    update(dt); draw();
+    raf = requestAnimationFrame(loop);
+  }
+  function show() { if (active) return; active = true; lastT = 0; raf = requestAnimationFrame(loop); }
+  function pause() {
+    if (state === "playing") { state = "paused"; $("flStatus").textContent = "suspended"; }
+    active = false; cancelAnimationFrame(raf);
+    draw();
+  }
+
+  document.addEventListener("keydown", (e) => {
+    if (currentView !== "flap") return;
+    const k = e.key.toLowerCase();
+    if (k === " " || k === "arrowup" || k === "w") { e.preventDefault(); if (!e.repeat) flap(); }
+  });
+  canvas.addEventListener("pointerdown", (e) => { e.preventDefault(); flap(); });
+  document.addEventListener("visibilitychange", () => { if (document.hidden && currentView === "flap") pause(); else if (!document.hidden && currentView === "flap") show(); });
+
+  reset(); renderSkins(); draw();
+  return { show, pause };
 })();
 
 /* ====================================================================
