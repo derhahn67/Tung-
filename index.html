@@ -2,7 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>devops-console :: cluster-prod-eu1</title>
 <style>
 :root {
@@ -22,7 +24,13 @@
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-family: var(--mono); font-size: 13px; }
-body { display: flex; flex-direction: column; overflow: hidden; }
+body { display: flex; flex-direction: column; overflow: hidden; height: 100dvh; -webkit-text-size-adjust: 100%; }
+button { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+#snakeCanvas, #tetrisCanvas, #svCanvas { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; max-width: 100%; height: auto; }
+.touchbar { display: none; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.touchbar button { flex: 1; min-width: 48px; padding: 14px 0; font-size: 18px; }
+body.touch .touchbar { display: flex; }
+body.touch .hint.keys { display: none; }
 button { font-family: var(--mono); font-size: 12px; background: var(--bg3); color: var(--text); border: 1px solid var(--line); padding: 5px 10px; cursor: pointer; border-radius: 4px; }
 button:hover:not(:disabled) { border-color: var(--blue); color: var(--blue); }
 button:disabled { opacity: 0.4; cursor: not-allowed; }
@@ -87,6 +95,18 @@ canvas { display: block; max-width: 100%; }
 #statusbar { height: 22px; flex: none; display: flex; align-items: center; gap: 18px; padding: 0 12px; background: #1f6feb; color: #fff; font-size: 11px; }
 #statusbar .spacer { flex: 1; }
 
+@media (max-width: 700px) {
+  #main { flex-direction: column; }
+  #sidebar { order: 2; width: 100% !important; display: flex; padding: 0 0 env(safe-area-inset-bottom); border-right: none; border-top: 1px solid var(--line); overflow-x: auto; }
+  #sidebar .nav { flex: 1; text-align: center; border-left: none; border-top: 2px solid transparent; padding: 10px 4px; }
+  #sidebar .nav.active { border-top-color: var(--orange); }
+  #sidebar .nav .ic { width: auto; font-size: 16px; }
+  #topbar .crumb, #topbar .pill, #statusbar { display: none; }
+  #content { padding: 8px; }
+  .grid { grid-template-columns: 1fr !important; }
+  .g4 { grid-template-columns: repeat(2, 1fr) !important; }
+  .panel > .pb { padding: 8px; }
+}
 @media (max-width: 900px) {
   .g4 { grid-template-columns: repeat(2, 1fr); }
   .g2, .g2e { grid-template-columns: 1fr; }
@@ -144,7 +164,9 @@ canvas { display: block; max-width: 100%; }
       <div class="grid g2">
         <div class="panel"><div class="ph"><span class="t">packet-route-visualiser — topology trace</span><span id="snStatus">idle</span></div>
           <div class="pb"><canvas id="snakeCanvas" width="600" height="400"></canvas>
-          <div class="hint">arrows / WASD: steer route · space: start / pause · Esc: overview</div></div></div>
+          <div class="hint keys">arrows / WASD: steer route · space: start / pause · Esc: overview</div>
+          <div class="touchbar"><button data-snk="up">&#9650;</button><button data-snk="left">&#9664;</button><button data-snk="down">&#9660;</button><button data-snk="right">&#9654;</button><button data-snk="go">&#9199;</button></div>
+          <div class="hint">touch: swipe on the map to steer · tap to start / pause</div></div></div>
         <div class="panel"><div class="ph"><span class="t">route metrics</span><span>session</span></div>
           <div class="pb">
             <div class="kv"><span>packets (score)</span><span id="snScore">0</span></div>
@@ -161,7 +183,9 @@ canvas { display: block; max-width: 100%; }
     <section class="view" id="view-tetris">
       <div class="grid g2e" style="grid-template-columns:auto 1fr">
         <div class="panel"><div class="ph"><span class="t">sector-map /dev/sda1</span><span id="tStatus">idle</span></div>
-          <div class="pb"><canvas id="tetrisCanvas" width="250" height="500"></canvas></div></div>
+          <div class="pb"><canvas id="tetrisCanvas" width="250" height="500" style="max-height:58vh;width:auto"></canvas>
+          <div class="touchbar"><button data-tt="left">&#9664;</button><button data-tt="rot">&#10227;</button><button data-tt="right">&#9654;</button></div>
+          <div class="touchbar"><button data-tt="down">&#9660;</button><button data-tt="drop">&#10515;</button><button data-tt="hold">HOLD</button><button data-tt="go">&#9199;</button></div></div></div>
         <div class="panel"><div class="ph"><span class="t">defrag.exe — compaction job</span><span>blocks</span></div>
           <div class="pb">
             <div class="kv"><span>next allocation</span><span></span></div>
@@ -172,7 +196,7 @@ canvas { display: block; max-width: 100%; }
             <div class="kv"><span>sectors freed (lines)</span><span id="tLines">0</span></div>
             <div class="kv"><span>io priority (level)</span><span id="tLevel">1</span></div>
             <div class="kv"><span>best run</span><span id="tBest">0</span></div>
-            <div class="hint">← → move · ↑ / X rotate · Z rotate ccw · ↓ soft · space hard drop · C hold · P pause · Enter start</div>
+            <div class="hint keys">← → move · ↑ / X rotate · Z rotate ccw · ↓ soft · space hard drop · C hold · P pause · Enter start</div>
           </div></div>
       </div>
     </section>
@@ -184,7 +208,9 @@ canvas { display: block; max-width: 100%; }
           <div class="pb" style="position:relative">
             <canvas id="svCanvas" width="860" height="540"></canvas>
             <div id="svOverlay" style="display:none;position:absolute;inset:12px;background:rgba(1,4,9,0.88);flex-direction:column;align-items:center;justify-content:center;gap:10px"></div>
-            <div class="hint">WASD / arrows: move · weapons fire automatically · 1/2/3: pick upgrade · space: start / pause · Esc: overview</div>
+            <div class="hint keys">WASD / arrows: move · weapons fire automatically · 1/2/3: pick upgrade · space: start / pause · Esc: overview</div>
+            <div class="touchbar"><button data-sv="go">&#9199; start / pause</button></div>
+            <div class="hint">touch: drag anywhere on the arena to move (virtual joystick)</div>
           </div></div>
         <div class="panel"><div class="ph"><span class="t">test harness</span><span>persistent</span></div>
           <div class="pb">
@@ -264,6 +290,21 @@ const Store = {
     try { localStorage.removeItem("dvc_" + key); } catch (e) { /* storage unavailable */ }
   }
 };
+
+const IS_TOUCH = ("ontouchstart" in window) || (window.matchMedia && window.matchMedia("(pointer: coarse)").matches);
+if (IS_TOUCH) document.body.classList.add("touch");
+
+// Fires fn on press, then repeats while held (for on-screen d-pads).
+function bindHold(btn, fn, repeat) {
+  let t1 = 0, t2 = 0;
+  const stop = () => { clearTimeout(t1); clearInterval(t2); };
+  btn.addEventListener("pointerdown", (e) => {
+    e.preventDefault(); fn();
+    if (repeat) t1 = setTimeout(() => { t2 = setInterval(fn, repeat); }, 220);
+  });
+  ["pointerup", "pointerleave", "pointercancel"].forEach((ev) => btn.addEventListener(ev, stop));
+  btn.addEventListener("contextmenu", (e) => e.preventDefault());
+}
 
 /* ====================================================================
    NAVIGATION / SHELL
@@ -635,8 +676,29 @@ const Snake = (() => {
     if (dirs[k]) {
       e.preventDefault();
       const [x, y] = dirs[k];
-      if (x !== -dir.x || y !== -dir.y) nextDir = { x, y };
+      steer(x, y);
     } else if (k === " ") { e.preventDefault(); toggle(); }
+  });
+
+  function steer(x, y) { if (x !== -dir.x || y !== -dir.y) nextDir = { x, y }; }
+  const SD = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
+  document.querySelectorAll("[data-snk]").forEach((b) => bindHold(b, () => {
+    const a = b.dataset.snk;
+    if (a === "go") toggle(); else { steer(SD[a][0], SD[a][1]); if (!running && alive) toggle(); }
+  }));
+  let sw = null;
+  canvas.addEventListener("pointerdown", (e) => { e.preventDefault(); sw = { x: e.clientX, y: e.clientY, used: false }; });
+  canvas.addEventListener("pointermove", (e) => {
+    if (!sw || sw.used) return;
+    const dx = e.clientX - sw.x, dy = e.clientY - sw.y;
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < 24) return;
+    if (Math.abs(dx) > Math.abs(dy)) steer(Math.sign(dx), 0); else steer(0, Math.sign(dy));
+    if (!running && alive) toggle();
+    sw = { x: e.clientX, y: e.clientY, used: false };
+  });
+  canvas.addEventListener("pointerup", (e) => {
+    if (sw && Math.hypot(e.clientX - sw.x, e.clientY - sw.y) < 12) toggle();
+    sw = null;
   });
 
   reset(); renderShop();
@@ -838,10 +900,20 @@ const Tetris = (() => {
     if (k === "enter") { e.preventDefault(); running ? pause() : start(); return; }
     if (k === "p") { running ? pause() : start(); return; }
     if (!running) return;
-    const handled = { arrowleft: () => move(-1, 0), arrowright: () => move(1, 0), arrowdown: () => { if (move(0, 1)) score += 1; else lock(); dropAcc = 0; },
+    const handled = { arrowleft: () => move(-1, 0), arrowright: () => move(1, 0), arrowdown: softDrop,
       arrowup: () => tryRotate(true), x: () => tryRotate(true), z: () => tryRotate(false), " ": hardDrop, c: hold };
     if (handled[k]) { e.preventDefault(); handled[k](); hud(); render(); }
   });
+
+  function softDrop() { if (move(0, 1)) score += 1; else lock(); dropAcc = 0; }
+  const TA = { left: [() => move(-1, 0), 90], right: [() => move(1, 0), 90], rot: [() => tryRotate(true), 0], down: [softDrop, 50], drop: [hardDrop, 0], hold: [hold, 0] };
+  document.querySelectorAll("[data-tt]").forEach((b) => {
+    const a = b.dataset.tt;
+    if (a === "go") return bindHold(b, () => { running ? pause() : start(); }, 0);
+    bindHold(b, () => { if (!running) return; TA[a][0](); hud(); render(); }, TA[a][1]);
+  });
+  // tap the board: start if idle, otherwise rotate
+  canvas.addEventListener("pointerdown", (e) => { e.preventDefault(); if (!running) start(); else { tryRotate(true); render(); } });
 
   reset();
   return { pause };
@@ -853,7 +925,18 @@ const Tetris = (() => {
 const Survivor = (() => {
   const canvas = $("svCanvas"), ctx = canvas.getContext("2d");
   const overlay = $("svOverlay");
-  const VW = canvas.width, VH = canvas.height;
+  let VW = canvas.width, VH = canvas.height;
+  // On phones / tablets, size the arena to the screen and zoom out a little so there is room to dodge.
+  function fitArena() {
+    if (window.innerWidth >= 900) { VW = canvas.width = 860; VH = canvas.height = 540; canvas.style.width = ""; canvas.style.height = ""; return; }
+    const cssW = canvas.parentElement.clientWidth - 16;
+    const cssH = Math.max(260, Math.min(window.innerHeight - 230, cssW * 1.5));
+    const k = Math.max(1, 560 / Math.min(cssW, cssH));
+    VW = canvas.width = Math.round(cssW * k); VH = canvas.height = Math.round(cssH * k);
+    canvas.style.width = cssW + "px"; canvas.style.height = cssH + "px";
+  }
+  const joy = { on: false, ox: 0, oy: 0, x: 0, y: 0, dx: 0, dy: 0 };
+  function toCanvas(e) { const r = canvas.getBoundingClientRect(); return { x: (e.clientX - r.left) * VW / r.width, y: (e.clientY - r.top) * VH / r.height }; }
   const WORLD_TIME = 150;
 
   const WORLDS = [
@@ -1079,7 +1162,7 @@ const Survivor = (() => {
     if (!opts.length) opts.push({ kind: "heal", label: "Hot patch", sub: "restore 40% HP" });
     g.opts = opts;
     overlay.innerHTML = '<div style="color:var(--green);font-size:16px">LEVEL ' + g.lvl + ' — select patch</div>' +
-      opts.map((o, i) => '<button data-o="' + i + '" style="width:340px;text-align:left;padding:10px"><span class="n">[' + (i + 1) + ']</span> ' +
+      opts.map((o, i) => '<button data-o="' + i + '" style="width:min(340px,92%);text-align:left;padding:10px"><span class="n">[' + (i + 1) + ']</span> ' +
         '<span class="' + (o.kind === "w" ? "k" : "p") + '">' + o.label + '</span><div class="ds" style="margin-top:3px">' + o.sub + "</div></button>").join("");
     overlay.style.display = "flex";
   }
@@ -1110,13 +1193,13 @@ const Survivor = (() => {
     g.t += dt; g.worldT += dt;
     if (g.banner) { g.banner.t -= dt; if (g.banner.t <= 0) g.banner = null; }
 
-    let mx = 0, my = 0;
+    let mx = joy.dx, my = joy.dy;
     if (keys.arrowleft || keys.a) mx--;
     if (keys.arrowright || keys.d) mx++;
     if (keys.arrowup || keys.w) my--;
     if (keys.arrowdown || keys.s) my++;
     if (mx || my) {
-      const l = Math.hypot(mx, my);
+      const l = joy.on ? 1 / Math.min(1, Math.hypot(mx, my)) * Math.hypot(mx, my) : Math.hypot(mx, my);
       p.x += mx / l * S.spd * dt; p.y += my / l * S.spd * dt;
       p.face = { x: mx / l, y: my / l };
     }
@@ -1275,6 +1358,12 @@ const Survivor = (() => {
       ctx.textAlign = "center"; ctx.font = "16px monospace"; ctx.fillStyle = "rgba(255,211,61," + Math.min(1, g.banner.t) + ")";
       ctx.fillText(g.banner.text, VW / 2, 90);
     }
+    if (joy.on) {
+      ctx.strokeStyle = "rgba(201,209,217,0.35)"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(joy.ox, joy.oy, 60, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = "rgba(201,209,217,0.3)";
+      ctx.beginPath(); ctx.arc(joy.ox + joy.dx * 60, joy.oy + joy.dy * 60, 24, 0, Math.PI * 2); ctx.fill(); ctx.lineWidth = 1;
+    }
     ctx.textAlign = "left";
   }
 
@@ -1323,6 +1412,8 @@ const Survivor = (() => {
   }
 
   function start(fresh) {
+    if (running) return;
+    fitArena();
     if (fresh || !g || g.over) { newGame(); overlay.style.display = "none"; renderBuild(); }
     running = true; lastT = 0;
     $("svStatus").textContent = "load test running";
@@ -1346,7 +1437,25 @@ const Survivor = (() => {
   document.addEventListener("keyup", (e) => { keys[e.key.toLowerCase()] = false; });
   window.addEventListener("blur", () => { for (const k in keys) keys[k] = false; });
 
-  drawIdle(); renderSide();
+  canvas.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    if (!running) { if (!g || !g.over) start(false); return; }
+    canvas.setPointerCapture(e.pointerId);
+    const c = toCanvas(e); Object.assign(joy, { on: true, ox: c.x, oy: c.y, dx: 0, dy: 0 });
+  });
+  canvas.addEventListener("pointermove", (e) => {
+    if (!joy.on) return;
+    const c = toCanvas(e), dx = c.x - joy.ox, dy = c.y - joy.oy, d = Math.hypot(dx, dy);
+    if (d < 8) { joy.dx = joy.dy = 0; return; }
+    const m = Math.min(1, d / 60); joy.dx = dx / d * m; joy.dy = dy / d * m;
+  });
+  const joyEnd = () => { joy.on = false; joy.dx = joy.dy = 0; };
+  ["pointerup", "pointercancel", "lostpointercapture"].forEach((ev) => canvas.addEventListener(ev, joyEnd));
+  document.querySelectorAll("[data-sv]").forEach((b) => bindHold(b, () => { if (running) pause(); else if (!g || !g.over) start(false); else start(true); }, 0));
+  window.addEventListener("resize", () => { if (!running) { fitArena(); if (!g) drawIdle(); else draw(); } });
+  document.addEventListener("visibilitychange", () => { if (document.hidden) pause(); });
+
+  fitArena(); drawIdle(); renderSide();
   return { pause };
 })();
 
