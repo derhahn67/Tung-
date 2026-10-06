@@ -114,6 +114,7 @@ canvas { display: block; max-width: 100%; }
     <h4>Pipelines</h4>
     <button class="nav" data-view="snake"><span class="ic">&#8644;</span><span class="lbl">Network Flow</span></button>
     <button class="nav" data-view="tetris"><span class="ic">&#9638;</span><span class="lbl">DB Defragmenter</span></button>
+    <button class="nav" data-view="surv"><span class="ic">&#9763;</span><span class="lbl">Load Test Sim</span></button>
     <h4>Operations</h4>
     <button class="nav" data-view="idle"><span class="ic">&#9881;</span><span class="lbl">Task Automation</span></button>
   </nav>
@@ -172,6 +173,28 @@ canvas { display: block; max-width: 100%; }
             <div class="kv"><span>io priority (level)</span><span id="tLevel">1</span></div>
             <div class="kv"><span>best run</span><span id="tBest">0</span></div>
             <div class="hint">← → move · ↑ / X rotate · Z rotate ccw · ↓ soft · space hard drop · C hold · P pause · Enter start</div>
+          </div></div>
+      </div>
+    </section>
+
+    <!-- ======================= GAME 3: SURVIVOR (LOAD TEST) ======================= -->
+    <section class="view" id="view-surv">
+      <div class="grid g2" style="grid-template-columns:auto 1fr">
+        <div class="panel"><div class="ph"><span class="t">load-test-sim — synthetic traffic arena</span><span id="svStatus">idle</span></div>
+          <div class="pb" style="position:relative">
+            <canvas id="svCanvas" width="860" height="540"></canvas>
+            <div id="svOverlay" style="display:none;position:absolute;inset:12px;background:rgba(1,4,9,0.88);flex-direction:column;align-items:center;justify-content:center;gap:10px"></div>
+            <div class="hint">WASD / arrows: move · weapons fire automatically · 1/2/3: pick upgrade · space: start / pause · Esc: overview</div>
+          </div></div>
+        <div class="panel"><div class="ph"><span class="t">test harness</span><span>persistent</span></div>
+          <div class="pb">
+            <div class="kv"><span>telemetry data</span><span id="svData" class="s">0</span></div>
+            <div class="kv"><span>best run (kills)</span><span id="svBest">0</span></div>
+            <div class="kv"><span>furthest cluster</span><span id="svBestWorld">-</span></div>
+            <h4 style="margin:14px 0 4px;color:var(--dim);font-weight:normal;font-size:11px">// active build</h4>
+            <div id="svBuild" class="ds">no run active</div>
+            <h4 style="margin:14px 0 4px;color:var(--dim);font-weight:normal;font-size:11px">// permanent upgrades</h4>
+            <div id="svMeta"></div>
           </div></div>
       </div>
     </section>
@@ -245,13 +268,14 @@ const Store = {
 /* ====================================================================
    NAVIGATION / SHELL
    ==================================================================== */
-const VIEW_LABELS = { dash: "overview", snake: "network-flow", tetris: "db-defrag", idle: "task-automation" };
+const VIEW_LABELS = { dash: "overview", snake: "network-flow", tetris: "db-defrag", surv: "load-test", idle: "task-automation" };
 let currentView = "dash";
 
 function showView(name) {
   if (!VIEW_LABELS[name]) return;
   if (currentView === "snake" && name !== "snake") Snake.pause();
   if (currentView === "tetris" && name !== "tetris") Tetris.pause();
+  if (currentView === "surv" && name !== "surv") Survivor.pause();
   currentView = name;
   document.querySelectorAll(".view").forEach((v) => v.classList.toggle("active", v.id === "view-" + name));
   document.querySelectorAll(".nav").forEach((b) => b.classList.toggle("active", b.dataset.view === name));
@@ -270,7 +294,7 @@ document.addEventListener("keydown", (e) => {
 $("cmdk").addEventListener("keydown", (e) => {
   if (e.key !== "Enter") return;
   const v = e.target.value.trim().toLowerCase();
-  const map = { overview: "dash", dash: "dash", flow: "snake", network: "snake", defrag: "tetris", db: "tetris", automation: "idle", tasks: "idle" };
+  const map = { overview: "dash", dash: "dash", flow: "snake", network: "snake", defrag: "tetris", db: "tetris", load: "surv", test: "surv", automation: "idle", tasks: "idle" };
   const hit = Object.keys(map).find((k) => v.includes(k));
   if (hit) showView(map[hit]);
   e.target.value = "";
@@ -820,6 +844,509 @@ const Tetris = (() => {
   });
 
   reset();
+  return { pause };
+})();
+
+/* ====================================================================
+   GAME 3: LOAD TEST SIMULATOR (SURVIVOR)
+   ==================================================================== */
+const Survivor = (() => {
+  const canvas = $("svCanvas"), ctx = canvas.getContext("2d");
+  const overlay = $("svOverlay");
+  const VW = canvas.width, VH = canvas.height;
+  const WORLD_TIME = 150;
+
+  const WORLDS = [
+    { name: "staging", bg: "#07120c", grid: "#10261a", enemy: ["#3fb950", "#9be9a8", "#2ea043"] },
+    { name: "prod-eu", bg: "#070d18", grid: "#122036", enemy: ["#58a6ff", "#a5d6ff", "#1f6feb"] },
+    { name: "prod-global", bg: "#150812", grid: "#2c1226", enemy: ["#bc8cff", "#f778ba", "#8957e5"] },
+    { name: "black-friday", bg: "#160a05", grid: "#2e170b", enemy: ["#f85149", "#ffa657", "#da3633"] }
+  ];
+
+  const WEAPONS = {
+    bolt: { name: "Packet Bolt", max: 6, desc: "fires at the nearest enemies" },
+    orbit: { name: "Orbiting Shards", max: 6, desc: "blades circle around you" },
+    aura: { name: "Firewall Aura", max: 6, desc: "damages everything close to you" },
+    chain: { name: "Chain Lightning", max: 6, desc: "zaps an enemy and jumps to others" },
+    nova: { name: "Pulse Nova", max: 6, desc: "periodic shockwave that knocks enemies back" }
+  };
+  const PASSIVES = {
+    might: { name: "Overclock", max: 5, desc: "+12% damage" },
+    haste: { name: "Low Latency", max: 5, desc: "-8% weapon cooldowns" },
+    swift: { name: "Fast Path", max: 5, desc: "+10% move speed" },
+    vital: { name: "Redundancy", max: 5, desc: "+20 max HP and heal fully" },
+    magnet: { name: "Wide Ingest", max: 5, desc: "+30% pickup range" }
+  };
+  const META = [
+    { id: "hp", name: "Base capacity", desc: "+15 starting HP", max: 5, cost: (l) => 40 + 40 * l },
+    { id: "dmg", name: "Compiler flags", desc: "+8% damage", max: 5, cost: (l) => 60 + 50 * l },
+    { id: "xp", name: "Telemetry boost", desc: "+10% XP gain", max: 5, cost: (l) => 50 + 45 * l },
+    { id: "start", name: "Warm cache", desc: "start each run at level 2 with an extra pick", max: 1, cost: () => 300 }
+  ];
+  const meta = Store.load("surv", { data: 0, best: 0, bestWorld: -1, hp: 0, dmg: 0, xp: 0, start: 0 });
+
+  const keys = {};
+  let g = null, running = false, raf = 0, lastT = 0;
+
+  /* ---------- run setup ---------- */
+  function newGame() {
+    const maxHp = 100 + meta.hp * 15;
+    g = {
+      t: 0, worldT: 0, world: 0, bossSpawned: false, banner: { text: "cluster: " + WORLDS[0].name, t: 2.5 },
+      p: { x: 0, y: 0, r: 11, hp: maxHp, maxHp, inv: 0, face: { x: 1, y: 0 } },
+      xp: 0, lvl: 1, next: 5, kills: 0, pending: 0, choosing: false, over: false,
+      weapons: { bolt: 1 }, passives: {}, cd: { bolt: 0, aura: 0, chain: 0, nova: 0 },
+      enemies: [], shots: [], gems: [], fx: [], texts: [], orbitAng: 0, spawnAcc: 0
+    };
+    if (meta.start) { g.lvl = 2; g.pending = 1; }
+  }
+
+  const lv = (o, k) => o[k] || 0;
+  function stat() {
+    return {
+      dmg: (1 + 0.12 * lv(g.passives, "might")) * (1 + 0.08 * meta.dmg),
+      cd: 1 - 0.08 * lv(g.passives, "haste"),
+      spd: 165 * (1 + 0.1 * lv(g.passives, "swift")),
+      magnet: 130 * (1 + 0.3 * lv(g.passives, "magnet")),
+      xp: 1 + 0.1 * meta.xp
+    };
+  }
+  const world = () => WORLDS[g.world % WORLDS.length];
+  const scale = () => (1 + g.worldT / 70) * Math.pow(1.8, g.world);
+
+  /* ---------- spawning ---------- */
+  function spawnEnemy(kind) {
+    const a = Math.random() * Math.PI * 2, d = 560;
+    const s = scale(), col = world().enemy;
+    const T = {
+      grunt: { r: 10, hp: 14, spd: 62, dmg: 8, xp: 1, color: col[0] },
+      runner: { r: 7, hp: 8, spd: 118, dmg: 6, xp: 1, color: col[1] },
+      tank: { r: 17, hp: 70, spd: 42, dmg: 16, xp: 4, color: col[2] },
+      boss: { r: 36, hp: 2200, spd: 70, dmg: 30, xp: 60, color: "#ffd33d" }
+    }[kind];
+    g.enemies.push({ kind, x: g.p.x + Math.cos(a) * d, y: g.p.y + Math.sin(a) * d, r: T.r, hp: T.hp * s, maxHp: T.hp * s,
+      spd: T.spd * (kind === "boss" ? 1 : 1 + g.world * 0.08), dmg: T.dmg * (1 + g.world * 0.4), xp: T.xp, color: T.color,
+      hitO: 0, flash: 0, kx: 0, ky: 0 });
+  }
+
+  function spawning(dt) {
+    if (g.worldT >= WORLD_TIME && !g.bossSpawned) {
+      g.bossSpawned = true;
+      spawnEnemy("boss");
+      g.banner = { text: "WARNING: traffic spike incoming", t: 3 };
+    }
+    const rate = (1.3 + g.worldT * 0.045 + g.world * 1.2) * (g.bossSpawned ? 0.5 : 1);
+    g.spawnAcc += rate * dt;
+    while (g.spawnAcc >= 1) {
+      g.spawnAcc -= 1;
+      const r = Math.random();
+      if (g.worldT > 60 && r < 0.12) spawnEnemy("tank");
+      else if (g.worldT > 25 && r < 0.4) spawnEnemy("runner");
+      else spawnEnemy("grunt");
+    }
+    // occasional swarm ring
+    if (Math.random() < dt * 0.02 * (1 + g.world)) for (let i = 0; i < 14; i++) spawnEnemy("runner");
+  }
+
+  /* ---------- damage & rewards ---------- */
+  function hurt(e, amount) {
+    if (e.hp <= 0) return;
+    e.hp -= amount; e.flash = 0.08;
+    g.texts.push({ x: e.x + rand(-6, 6), y: e.y - e.r, v: Math.round(amount), t: 0.6 });
+    if (e.hp <= 0) kill(e);
+  }
+
+  function kill(e) {
+    g.kills++;
+    for (let i = 0; i < 6; i++) g.fx.push({ type: "spark", x: e.x, y: e.y, vx: rand(-120, 120), vy: rand(-120, 120), t: 0.35, color: e.color });
+    if (e.kind === "boss") {
+      g.gems.push({ x: e.x, y: e.y, v: e.xp, big: true });
+      meta.data += 40 + 20 * g.world;
+      g.world++; g.worldT = 0; g.bossSpawned = false;
+      g.enemies = g.enemies.filter((o) => o === e);
+      g.p.hp = g.p.maxHp;
+      g.banner = { text: "cluster stabilised — migrating to " + world().name, t: 3.5 };
+      Store.save("surv", meta); renderSide();
+    } else {
+      g.gems.push({ x: e.x, y: e.y, v: e.xp });
+    }
+  }
+
+  function gainXp(v) {
+    g.xp += v * stat().xp;
+    while (g.xp >= g.next) {
+      g.xp -= g.next; g.lvl++; g.pending++;
+      g.next = Math.floor(g.next * 1.16 + 3);
+    }
+  }
+
+  /* ---------- weapons ---------- */
+  function nearest(x, y, n, maxD, exclude) {
+    return g.enemies
+      .filter((e) => e.hp > 0 && (!exclude || !exclude.has(e)))
+      .map((e) => ({ e, d: Math.hypot(e.x - x, e.y - y) }))
+      .filter((o) => o.d <= maxD)
+      .sort((a, b) => a.d - b.d)
+      .slice(0, n)
+      .map((o) => o.e);
+  }
+
+  function weapons(dt) {
+    const S = stat(), p = g.p;
+    for (const k in g.cd) g.cd[k] -= dt;
+
+    const bl = lv(g.weapons, "bolt");
+    if (bl && g.cd.bolt <= 0) {
+      g.cd.bolt = (0.85 - bl * 0.05) * S.cd;
+      const targets = nearest(p.x, p.y, 1 + Math.floor(bl / 2), 260);
+      if (!targets.length) targets.push({ x: p.x + p.face.x, y: p.y + p.face.y });
+      targets.forEach((t) => {
+        const a = Math.atan2(t.y - p.y, t.x - p.x);
+        g.shots.push({ x: p.x, y: p.y, vx: Math.cos(a) * 460, vy: Math.sin(a) * 460, dmg: (12 + bl * 6) * S.dmg, pierce: bl >= 4 ? 3 : 1, t: 1.4, hit: new Set() });
+      });
+    }
+
+    const ol = lv(g.weapons, "orbit");
+    if (ol) {
+      g.orbitAng += dt * (2.6 + ol * 0.25);
+      const n = ol + 1, R = 62 + ol * 6;
+      for (let i = 0; i < n; i++) {
+        const a = g.orbitAng + i * Math.PI * 2 / n;
+        const bx = p.x + Math.cos(a) * R, by = p.y + Math.sin(a) * R;
+        g.enemies.forEach((e) => {
+          if (e.hitO <= 0 && Math.hypot(e.x - bx, e.y - by) < e.r + 9) { hurt(e, (8 + ol * 5) * S.dmg); e.hitO = 0.45; }
+        });
+      }
+    }
+
+    const al = lv(g.weapons, "aura");
+    if (al && g.cd.aura <= 0) {
+      g.cd.aura = 0.5;
+      const R = 52 + al * 12;
+      g.enemies.forEach((e) => { if (Math.hypot(e.x - p.x, e.y - p.y) < R + e.r) hurt(e, (4 + al * 4) * S.dmg); });
+    }
+
+    const cl = lv(g.weapons, "chain");
+    if (cl && g.cd.chain <= 0) {
+      const first = nearest(p.x, p.y, 1, 260)[0];
+      if (first) {
+        g.cd.chain = (2.3 - cl * 0.15) * S.cd;
+        const hit = new Set([first]);
+        let cur = first, from = { x: p.x, y: p.y };
+        for (let j = 0; j < 2 + cl; j++) {
+          g.fx.push({ type: "bolt", x1: from.x, y1: from.y, x2: cur.x, y2: cur.y, t: 0.18 });
+          hurt(cur, (20 + cl * 10) * S.dmg);
+          from = { x: cur.x, y: cur.y };
+          const nx = nearest(cur.x, cur.y, 1, 170, hit)[0];
+          if (!nx) break;
+          hit.add(nx); cur = nx;
+        }
+      }
+    }
+
+    const nl = lv(g.weapons, "nova");
+    if (nl && g.cd.nova <= 0) {
+      g.cd.nova = (3.2 - nl * 0.2) * S.cd;
+      const R = 120 + nl * 18;
+      g.fx.push({ type: "ring", x: p.x, y: p.y, R, t: 0.35 });
+      g.enemies.forEach((e) => {
+        const d = Math.hypot(e.x - p.x, e.y - p.y);
+        if (d < R + e.r) {
+          hurt(e, (15 + nl * 8) * S.dmg);
+          if (e.kind !== "boss" && d > 0) { e.kx = (e.x - p.x) / d * 340; e.ky = (e.y - p.y) / d * 340; }
+        }
+      });
+    }
+  }
+
+  /* ---------- level-up choices ---------- */
+  function openChoice() {
+    g.choosing = true;
+    const pool = [];
+    const ownedW = Object.keys(g.weapons).length;
+    for (const k in WEAPONS) {
+      const l = lv(g.weapons, k);
+      if (l >= WEAPONS[k].max || (!l && ownedW >= 4)) continue;
+      pool.push({ kind: "w", k, label: WEAPONS[k].name, sub: l ? "level " + (l + 1) : "NEW · " + WEAPONS[k].desc });
+    }
+    for (const k in PASSIVES) {
+      const l = lv(g.passives, k);
+      if (l >= PASSIVES[k].max) continue;
+      pool.push({ kind: "p", k, label: PASSIVES[k].name, sub: PASSIVES[k].desc + " (lv " + (l + 1) + ")" });
+    }
+    const opts = [];
+    while (opts.length < 3 && pool.length) opts.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+    if (!opts.length) opts.push({ kind: "heal", label: "Hot patch", sub: "restore 40% HP" });
+    g.opts = opts;
+    overlay.innerHTML = '<div style="color:var(--green);font-size:16px">LEVEL ' + g.lvl + ' — select patch</div>' +
+      opts.map((o, i) => '<button data-o="' + i + '" style="width:340px;text-align:left;padding:10px"><span class="n">[' + (i + 1) + ']</span> ' +
+        '<span class="' + (o.kind === "w" ? "k" : "p") + '">' + o.label + '</span><div class="ds" style="margin-top:3px">' + o.sub + "</div></button>").join("");
+    overlay.style.display = "flex";
+  }
+
+  function choose(i) {
+    const o = g.opts && g.opts[i];
+    if (!o) return;
+    if (o.kind === "w") g.weapons[o.k] = lv(g.weapons, o.k) + 1;
+    else if (o.kind === "p") {
+      g.passives[o.k] = lv(g.passives, o.k) + 1;
+      if (o.k === "vital") { g.p.maxHp += 20; g.p.hp = g.p.maxHp; }
+    } else g.p.hp = Math.min(g.p.maxHp, g.p.hp + g.p.maxHp * 0.4);
+    g.pending--; g.choosing = false; g.opts = null;
+    overlay.style.display = "none";
+    renderBuild();
+  }
+
+  overlay.addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    if (b.dataset.o !== undefined) choose(parseInt(b.dataset.o, 10));
+    if (b.dataset.act === "restart") start(true);
+  });
+
+  /* ---------- main update ---------- */
+  function update(dt) {
+    const p = g.p, S = stat();
+    g.t += dt; g.worldT += dt;
+    if (g.banner) { g.banner.t -= dt; if (g.banner.t <= 0) g.banner = null; }
+
+    let mx = 0, my = 0;
+    if (keys.arrowleft || keys.a) mx--;
+    if (keys.arrowright || keys.d) mx++;
+    if (keys.arrowup || keys.w) my--;
+    if (keys.arrowdown || keys.s) my++;
+    if (mx || my) {
+      const l = Math.hypot(mx, my);
+      p.x += mx / l * S.spd * dt; p.y += my / l * S.spd * dt;
+      p.face = { x: mx / l, y: my / l };
+    }
+    p.inv -= dt;
+
+    spawning(dt);
+    weapons(dt);
+
+    g.enemies.forEach((e) => {
+      const dx = p.x - e.x, dy = p.y - e.y, d = Math.hypot(dx, dy) || 1;
+      e.x += (dx / d * e.spd + e.kx) * dt; e.y += (dy / d * e.spd + e.ky) * dt;
+      e.kx *= 0.88; e.ky *= 0.88;
+      e.hitO -= dt; e.flash -= dt;
+      if (d < e.r + p.r && p.inv <= 0) { p.hp -= e.dmg; p.inv = 0.45; g.fx.push({ type: "hurt", t: 0.15 }); }
+      if (e.kind !== "boss" && d > 900) { e.hp = 0; } // despawn stragglers far away
+    });
+    // light separation so enemies do not stack perfectly
+    for (let i = 0; i < g.enemies.length; i += 2) {
+      const a = g.enemies[i], b = g.enemies[i + 1];
+      if (!b) break;
+      const dx = a.x - b.x, dy = a.y - b.y, d = Math.hypot(dx, dy);
+      if (d > 0 && d < a.r + b.r) { const push = (a.r + b.r - d) / 2; a.x += dx / d * push; a.y += dy / d * push; b.x -= dx / d * push; b.y -= dy / d * push; }
+    }
+
+    g.shots.forEach((s) => {
+      s.x += s.vx * dt; s.y += s.vy * dt; s.t -= dt;
+      for (const e of g.enemies) {
+        if (s.pierce <= 0) break;
+        if (e.hp > 0 && !s.hit.has(e) && Math.hypot(e.x - s.x, e.y - s.y) < e.r + 4) { s.hit.add(e); hurt(e, s.dmg); s.pierce--; }
+      }
+    });
+    g.shots = g.shots.filter((s) => s.t > 0 && s.pierce > 0);
+    g.enemies = g.enemies.filter((e) => e.hp > 0);
+
+    g.gems.forEach((gm) => {
+      const dx = p.x - gm.x, dy = p.y - gm.y, d = Math.hypot(dx, dy);
+      if (d < S.magnet || gm.pull) { gm.pull = true; gm.x += dx / d * 420 * dt; gm.y += dy / d * 420 * dt; }
+      if (d < p.r + 6) { gm.got = true; gainXp(gm.v); }
+    });
+    g.gems = g.gems.filter((gm) => !gm.got);
+    if (g.gems.length > 400) g.gems.splice(0, g.gems.length - 400);
+
+    g.fx.forEach((f) => { f.t -= dt; if (f.type === "spark") { f.x += f.vx * dt; f.y += f.vy * dt; } });
+    g.fx = g.fx.filter((f) => f.t > 0);
+    g.texts.forEach((t) => { t.t -= dt; t.y -= 30 * dt; });
+    g.texts = g.texts.filter((t) => t.t > 0);
+    if (g.texts.length > 80) g.texts.splice(0, g.texts.length - 80);
+
+    if (p.hp <= 0) return gameOver();
+    if (g.pending > 0 && !g.choosing) openChoice();
+  }
+
+  function gameOver() {
+    g.over = true; running = false;
+    const earned = Math.floor(g.kills / 8 + g.t / 6 + g.world * 30);
+    meta.data += earned;
+    if (g.kills > meta.best) meta.best = g.kills;
+    if (g.world > meta.bestWorld) meta.bestWorld = g.world;
+    Store.save("surv", meta);
+    const m = Math.floor(g.t / 60), s = Math.floor(g.t % 60);
+    overlay.innerHTML = '<div style="color:var(--red);font-size:16px">FATAL: service overloaded</div>' +
+      '<div class="ds">survived ' + m + "m " + s + "s · " + g.kills + " kills · level " + g.lvl + " · cluster " + world().name + "</div>" +
+      '<div class="s">+' + earned + " telemetry data</div>" +
+      '<button data-act="restart" style="padding:10px 20px">re-run test [space]</button>';
+    overlay.style.display = "flex";
+    $("svStatus").textContent = "crashed";
+    renderSide();
+  }
+
+  /* ---------- rendering ---------- */
+  function draw() {
+    const w = world(), p = g.p;
+    const cx = p.x - VW / 2, cy = p.y - VH / 2;
+    ctx.fillStyle = w.bg; ctx.fillRect(0, 0, VW, VH);
+    ctx.strokeStyle = w.grid; ctx.lineWidth = 1;
+    const gs = 40;
+    for (let x = -((cx % gs) + gs) % gs; x < VW; x += gs) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, VH); ctx.stroke(); }
+    for (let y = -((cy % gs) + gs) % gs; y < VH; y += gs) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(VW, y); ctx.stroke(); }
+    ctx.save(); ctx.translate(-cx, -cy);
+
+    const al = lv(g.weapons, "aura");
+    if (al) { ctx.fillStyle = "rgba(57,197,207,0.08)"; ctx.strokeStyle = "rgba(57,197,207,0.35)"; ctx.beginPath(); ctx.arc(p.x, p.y, 52 + al * 12, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); }
+
+    g.gems.forEach((gm) => {
+      const s = gm.big ? 9 : 4;
+      ctx.fillStyle = gm.big ? "#ffd33d" : gm.v > 1 ? "#bc8cff" : "#39c5cf";
+      ctx.beginPath(); ctx.moveTo(gm.x, gm.y - s); ctx.lineTo(gm.x + s, gm.y); ctx.lineTo(gm.x, gm.y + s); ctx.lineTo(gm.x - s, gm.y); ctx.fill();
+    });
+
+    g.enemies.forEach((e) => {
+      ctx.fillStyle = e.flash > 0 ? "#ffffff" : e.color;
+      ctx.beginPath(); ctx.arc(e.x, e.y, e.r, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "rgba(0,0,0,0.55)";
+      ctx.fillRect(e.x - e.r * 0.45, e.y - e.r * 0.2, e.r * 0.3, e.r * 0.3);
+      ctx.fillRect(e.x + e.r * 0.15, e.y - e.r * 0.2, e.r * 0.3, e.r * 0.3);
+      if (e.kind === "tank" && e.hp < e.maxHp) { ctx.fillStyle = "#f85149"; ctx.fillRect(e.x - e.r, e.y - e.r - 6, 2 * e.r * e.hp / e.maxHp, 3); }
+    });
+
+    const ol = lv(g.weapons, "orbit");
+    if (ol) {
+      const n = ol + 1, R = 62 + ol * 6;
+      ctx.fillStyle = "#d29922";
+      for (let i = 0; i < n; i++) {
+        const a = g.orbitAng + i * Math.PI * 2 / n;
+        ctx.save(); ctx.translate(p.x + Math.cos(a) * R, p.y + Math.sin(a) * R); ctx.rotate(a * 2);
+        ctx.fillRect(-7, -3, 14, 6); ctx.restore();
+      }
+    }
+
+    ctx.fillStyle = "#58a6ff";
+    g.shots.forEach((s) => { ctx.beginPath(); ctx.arc(s.x, s.y, 4, 0, Math.PI * 2); ctx.fill(); });
+
+    g.fx.forEach((f) => {
+      if (f.type === "spark") { ctx.fillStyle = f.color; ctx.globalAlpha = f.t / 0.35; ctx.fillRect(f.x - 2, f.y - 2, 4, 4); ctx.globalAlpha = 1; }
+      else if (f.type === "bolt") {
+        ctx.strokeStyle = "#a5d6ff"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(f.x1, f.y1);
+        for (let i = 1; i < 5; i++) ctx.lineTo(f.x1 + (f.x2 - f.x1) * i / 5 + rand(-8, 8), f.y1 + (f.y2 - f.y1) * i / 5 + rand(-8, 8));
+        ctx.lineTo(f.x2, f.y2); ctx.stroke(); ctx.lineWidth = 1;
+      } else if (f.type === "ring") {
+        ctx.strokeStyle = "rgba(188,140,255," + (f.t / 0.35) + ")"; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(f.x, f.y, f.R * (1 - f.t / 0.35 * 0.7), 0, Math.PI * 2); ctx.stroke(); ctx.lineWidth = 1;
+      }
+    });
+
+    ctx.fillStyle = p.inv > 0 && Math.floor(p.inv * 20) % 2 ? "#ffffff" : "#3fb950";
+    ctx.fillRect(p.x - p.r, p.y - p.r, p.r * 2, p.r * 2);
+    ctx.fillStyle = "#010409"; ctx.font = "bold 13px monospace"; ctx.textAlign = "center";
+    ctx.fillText(">", p.x, p.y + 5);
+
+    ctx.font = "11px monospace"; ctx.fillStyle = "#ffffff";
+    g.texts.forEach((t) => { ctx.globalAlpha = Math.min(1, t.t * 2); ctx.fillText(t.v, t.x, t.y); });
+    ctx.globalAlpha = 1;
+    ctx.restore();
+
+    if (g.fx.some((f) => f.type === "hurt")) { ctx.fillStyle = "rgba(248,81,73,0.18)"; ctx.fillRect(0, 0, VW, VH); }
+
+    // HUD
+    ctx.textAlign = "left";
+    ctx.fillStyle = "#161b22"; ctx.fillRect(0, 0, VW, 8);
+    ctx.fillStyle = "#39c5cf"; ctx.fillRect(0, 0, VW * g.xp / g.next, 8);
+    ctx.fillStyle = "#161b22"; ctx.fillRect(10, 16, 200, 10);
+    ctx.fillStyle = g.p.hp / g.p.maxHp < 0.3 ? "#f85149" : "#3fb950"; ctx.fillRect(10, 16, 200 * Math.max(0, g.p.hp) / g.p.maxHp, 10);
+    ctx.fillStyle = "#c9d1d9"; ctx.font = "11px monospace";
+    ctx.fillText("hp " + Math.ceil(Math.max(0, g.p.hp)) + "/" + g.p.maxHp + "   lvl " + g.lvl + "   kills " + g.kills, 10, 42);
+    const left = Math.max(0, WORLD_TIME - g.worldT);
+    ctx.textAlign = "right";
+    ctx.fillText("cluster " + (g.world + 1) + ": " + w.name + "   " + (g.bossSpawned ? "SPIKE ACTIVE" : "spike in " + Math.floor(left / 60) + ":" + String(Math.floor(left % 60)).padStart(2, "0")), VW - 10, 24);
+    ctx.fillText("rps " + g.enemies.length * 37, VW - 10, 40);
+    const boss = g.enemies.find((e) => e.kind === "boss");
+    if (boss) {
+      ctx.fillStyle = "#161b22"; ctx.fillRect(VW / 2 - 200, VH - 26, 400, 12);
+      ctx.fillStyle = "#ffd33d"; ctx.fillRect(VW / 2 - 200, VH - 26, 400 * boss.hp / boss.maxHp, 12);
+      ctx.fillStyle = "#c9d1d9"; ctx.textAlign = "center"; ctx.fillText("TRAFFIC SPIKE", VW / 2, VH - 32);
+    }
+    if (g.banner) {
+      ctx.textAlign = "center"; ctx.font = "16px monospace"; ctx.fillStyle = "rgba(255,211,61," + Math.min(1, g.banner.t) + ")";
+      ctx.fillText(g.banner.text, VW / 2, 90);
+    }
+    ctx.textAlign = "left";
+  }
+
+  function drawIdle() {
+    ctx.fillStyle = "#010409"; ctx.fillRect(0, 0, VW, VH);
+    ctx.fillStyle = "#8b949e"; ctx.font = "14px monospace"; ctx.textAlign = "center";
+    ctx.fillText("$ ./load-test --mode=survival", VW / 2, VH / 2 - 10);
+    ctx.fillStyle = "#3fb950"; ctx.fillText("press space to begin", VW / 2, VH / 2 + 16);
+    ctx.textAlign = "left";
+  }
+
+  /* ---------- side panel ---------- */
+  function renderBuild() {
+    if (!g) { $("svBuild").textContent = "no run active"; return; }
+    const w = Object.keys(g.weapons).map((k) => '<div class="kv"><span class="k">' + WEAPONS[k].name + "</span><span>lv " + g.weapons[k] + "</span></div>");
+    const p = Object.keys(g.passives).map((k) => '<div class="kv"><span class="p">' + PASSIVES[k].name + "</span><span>lv " + g.passives[k] + "</span></div>");
+    $("svBuild").innerHTML = w.concat(p).join("");
+  }
+
+  function renderSide() {
+    $("svData").textContent = meta.data;
+    $("svBest").textContent = meta.best;
+    $("svBestWorld").textContent = meta.bestWorld < 0 ? "-" : WORLDS[meta.bestWorld % WORLDS.length].name + " (" + (meta.bestWorld + 1) + ")";
+    $("svMeta").innerHTML = META.map((m) => {
+      const l = meta[m.id], maxed = l >= m.max, c = m.cost(l);
+      return '<div class="row"><div><div class="nm">' + m.name + ' <span class="lv">[' + l + "/" + m.max + ']</span></div><div class="ds">' + m.desc + "</div></div>" +
+        '<button data-m="' + m.id + '"' + (maxed || meta.data < c ? " disabled" : "") + ">" + (maxed ? "max" : c) + "</button></div>";
+    }).join("");
+    renderBuild();
+  }
+  $("svMeta").addEventListener("click", (e) => {
+    const m = META.find((x) => x.id === e.target.dataset.m);
+    if (!m) return;
+    const c = m.cost(meta[m.id]);
+    if (meta[m.id] >= m.max || meta.data < c) return;
+    meta.data -= c; meta[m.id]++; Store.save("surv", meta); renderSide();
+  });
+
+  /* ---------- loop & controls ---------- */
+  function loop(t) {
+    if (!running) return;
+    const dt = Math.min(0.05, (t - (lastT || t)) / 1000); lastT = t;
+    if (!g.choosing) update(dt);
+    if (g) draw();
+    if (running) raf = requestAnimationFrame(loop);
+  }
+
+  function start(fresh) {
+    if (fresh || !g || g.over) { newGame(); overlay.style.display = "none"; renderBuild(); }
+    running = true; lastT = 0;
+    $("svStatus").textContent = "load test running";
+    if (g.pending > 0 && !g.choosing) openChoice();
+    raf = requestAnimationFrame(loop);
+  }
+  function pause() {
+    if (!running) return;
+    running = false; cancelAnimationFrame(raf);
+    $("svStatus").textContent = "paused";
+  }
+
+  document.addEventListener("keydown", (e) => {
+    if (currentView !== "surv") return;
+    const k = e.key.toLowerCase();
+    if (["arrowup", "arrowdown", "arrowleft", "arrowright", " "].includes(k)) e.preventDefault();
+    keys[k] = true;
+    if (k === " ") { if (running) pause(); else start(false); }
+    if (g && g.choosing && ["1", "2", "3"].includes(k)) choose(parseInt(k, 10) - 1);
+  });
+  document.addEventListener("keyup", (e) => { keys[e.key.toLowerCase()] = false; });
+  window.addEventListener("blur", () => { for (const k in keys) keys[k] = false; });
+
+  drawIdle(); renderSide();
   return { pause };
 })();
 
