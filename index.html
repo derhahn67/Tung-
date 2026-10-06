@@ -45,6 +45,14 @@ button { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
 .lvlcard-icon { width: 46px; height: 46px; display: flex; align-items: center; justify-content: center; font-size: 24px; border: 2px solid; border-radius: 8px; background: var(--bg); margin-bottom: 2px; }
 .lvlcard-name { font-size: 12px; color: var(--text); text-align: center; }
 .lvlcard-pips { font-size: 11px; letter-spacing: 1px; }
+#svOverlay { overflow-y: auto; }
+@media (max-width: 700px) {
+  #svOverlay { gap: 6px !important; padding: 6px; }
+  #svOverlay .lvlcard { width: 76px !important; padding: 12px 3px 6px; gap: 2px; }
+  #svOverlay .lvlcard .ds { display: none; }
+  #svOverlay .lvlcard-icon { width: 34px; height: 34px; font-size: 18px; }
+  #svOverlay .lvlcard-name { font-size: 10px; }
+}
 .wheel-slot { width: 84px; height: 84px; border: 2px solid var(--line); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 30px; background: var(--bg3); transition: border-color .2s, transform .2s; }
 .hudicon { position: relative; width: 34px; height: 34px; border: 2px solid var(--line); border-radius: 6px; background: var(--bg); display: flex; align-items: center; justify-content: center; font-size: 16px; }
 .hudicon b { position: absolute; bottom: -5px; right: -5px; background: var(--bg2); border: 1px solid var(--line); border-radius: 8px; font-size: 9px; padding: 0 3px; color: var(--text); line-height: 1.4; }
@@ -1163,7 +1171,7 @@ const Survivor = (() => {
   ];
   const meta = Store.load("surv", {
     data: 0, best: 0, bestWorld: -1, hp: 0, dmg: 0, xp: 0, start: 0, charId: "default",
-    totalKills: 0, totalChests: 0, totalEvolutions: 0, maxWeaponsEquipped: 0, achv: {}
+    totalKills: 0, totalChests: 0, totalEvolutions: 0, maxWeaponsEquipped: 0, achv: {}, startWorld: 0
   });
 
   /* ---------- weapon evolutions: max level + a paired passive, auto-triggers mid-run ---------- */
@@ -1203,14 +1211,15 @@ const Survivor = (() => {
   }
 
   const keys = {};
-  let g = null, running = false, raf = 0, lastT = 0;
+  let g = null, running = false, raf = 0, lastT = 0, homeOpen = false;
 
   /* ---------- run setup ---------- */
   function newGame() {
     const char = CHARACTERS[meta.charId] || CHARACTERS.default;
     const maxHp = (100 + meta.hp * 15) * char.hpMul;
+    const startWorld = Math.min(meta.startWorld || 0, Math.max(0, meta.bestWorld + 1));
     g = {
-      t: 0, worldT: 0, world: 0, bossSpawned: false, banner: { text: "cluster: " + WORLDS[0].name, t: 2.5 },
+      t: 0, worldT: 0, world: startWorld, bossSpawned: false, banner: { text: "cluster: " + WORLDS[startWorld % WORLDS.length].name, t: 2.5 },
       p: { x: 0, y: 0, r: 11, hp: maxHp, maxHp, inv: 0, face: { x: 1, y: 0 }, walk: 0 },
       xp: 0, lvl: 1, next: 5, kills: 0, pending: 0, choosing: false, over: false, wheelDone: false,
       char, weapons: { [char.startWeapon]: 1 }, passives: {}, evolved: {},
@@ -1716,9 +1725,47 @@ const Survivor = (() => {
     const b = e.target.closest("button");
     if (!b) return;
     if (b.dataset.o !== undefined) choose(parseInt(b.dataset.o, 10));
-    if (b.dataset.act === "restart") start(true);
     if (b.dataset.act === "wheel-continue") closeWheel();
+    if (b.dataset.act === "go-home") showHome();
+    if (b.dataset.act === "home-start") start(true);
+    if (b.dataset.act === "home-resume") start(false);
+    if (b.dataset.char) { meta.charId = b.dataset.char; Store.save("surv", meta); renderHome(); renderSide(); }
+    if (b.dataset.world !== undefined && !b.disabled) { meta.startWorld = parseInt(b.dataset.world, 10); Store.save("surv", meta); renderHome(); }
   });
+
+  /* ---------- home / pause screen: pick operator + starting cluster ---------- */
+  function hasPausedRun() { return !!g && !g.over; }
+  function renderHome() {
+    const maxW = Math.max(0, meta.bestWorld + 1), sel = Math.min(meta.startWorld || 0, maxW), resumable = hasPausedRun();
+    const charCards = Object.keys(CHARACTERS).map((id) => {
+      const c = CHARACTERS[id], on = meta.charId === id;
+      return '<button data-char="' + id + '" class="lvlcard" style="border-color:' + (on ? c.color : "var(--line)") + (on ? ";box-shadow:0 0 0 1px " + c.color : "") + '">' +
+        '<div class="lvlcard-icon" style="color:' + c.color + ';border-color:' + c.color + '">' + c.sym + "</div>" +
+        '<div class="lvlcard-name">' + c.name + '</div><div class="ds">' + c.desc + "</div></button>";
+    }).join("");
+    const worldCards = WORLDS.map((w, i) => {
+      const locked = i > maxW, on = sel === i, col = w.enemy[0];
+      return '<button data-world="' + i + '" class="lvlcard"' + (locked ? " disabled" : "") + ' style="width:120px;border-color:' + (on ? col : "var(--line)") + (on ? ";box-shadow:0 0 0 1px " + col : "") + (locked ? ";opacity:.4;cursor:not-allowed" : "") + '">' +
+        '<div class="lvlcard-badge" style="background:' + col + '">' + (i + 1) + "</div>" +
+        '<div class="lvlcard-icon" style="color:' + col + ';border-color:' + col + '">' + (locked ? "✕" : "▶") + "</div>" +
+        '<div class="lvlcard-name">' + w.name + '</div><div class="ds">' + (locked ? "reach cluster " + i + " first" : i === 0 ? "easiest" : "harder start") + "</div></button>";
+    }).join("");
+    overlay.innerHTML = '<div style="color:var(--green);font-size:17px">' + (resumable ? "PAUSED — HOME" : "LOAD TEST SIM — HOME") + "</div>" +
+      '<div class="ds">operator image</div>' +
+      '<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;max-width:680px">' + charCards + "</div>" +
+      '<div class="ds" style="margin-top:6px">starting cluster' + (resumable ? " (applies to a new run)" : "") + "</div>" +
+      '<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;max-width:680px">' + worldCards + "</div>" +
+      '<div style="display:flex;gap:10px;margin-top:12px">' +
+      (resumable ? '<button data-act="home-resume" style="padding:10px 20px;color:var(--green)">RESUME [space]</button>' : "") +
+      '<button data-act="home-start" style="padding:10px 20px' + (resumable ? "" : ";color:var(--green)") + '">' + (resumable ? "ABANDON &amp; START NEW" : "START RUN [space]") + "</button></div>";
+    overlay.style.display = "flex";
+  }
+  function showHome() {
+    if (running) pause();
+    homeOpen = true;
+    renderHome();
+    $("svStatus").textContent = hasPausedRun() ? "paused" : "home";
+  }
 
   /* ---------- main update ---------- */
   function update(dt) {
@@ -1930,7 +1977,7 @@ const Survivor = (() => {
       '<div class="ds">survived ' + m + "m " + s + "s · " + g.kills + " kills · level " + g.lvl + " · cluster " + world().name + "</div>" +
       '<div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;max-width:320px;margin:10px 0">' + buildIcons + "</div>" +
       '<div class="s">+' + earned + " telemetry data" + (newAchv ? " · achievement unlocked!" : "") + "</div>" +
-      '<button data-act="restart" style="padding:10px 20px">re-run test [space]</button>';
+      '<button data-act="go-home" style="padding:10px 20px">continue [space]</button>';
     overlay.style.display = "flex";
     $("svStatus").textContent = "crashed";
     renderSide();
@@ -2202,7 +2249,8 @@ const Survivor = (() => {
     if (running) return;
     Sfx.unlock();
     fitArena();
-    if (fresh || !g || g.over) { newGame(); overlay.style.display = "none"; renderBuild(); }
+    homeOpen = false; overlay.style.display = "none";
+    if (fresh || !g || g.over) { newGame(); renderBuild(); }
     running = true; lastT = 0;
     $("svStatus").textContent = "load test running";
     if (g.pending > 0 && !g.choosing) openChoice();
@@ -2271,14 +2319,15 @@ const Survivor = (() => {
       else if (!g.opts && k === " " && g.wheelDone) closeWheel();
       return;
     }
-    if (k === " ") { if (running) pause(); else start(false); }
+    if (homeOpen) { if (k === " ") start(!hasPausedRun()); return; }
+    if (k === " ") showHome();
   });
   document.addEventListener("keyup", (e) => { keys[e.key.toLowerCase()] = false; });
   window.addEventListener("blur", () => { for (const k in keys) keys[k] = false; });
 
   canvas.addEventListener("pointerdown", (e) => {
     e.preventDefault();
-    if (!running) { if (!g || !g.over) start(false); return; }
+    if (!running) { if (!homeOpen && !(g && g.over)) showHome(); return; }
     canvas.setPointerCapture(e.pointerId);
     const c = toCanvas(e); Object.assign(joy, { on: true, ox: c.x, oy: c.y, dx: 0, dy: 0 });
   });
@@ -2290,11 +2339,11 @@ const Survivor = (() => {
   });
   const joyEnd = () => { joy.on = false; joy.dx = joy.dy = 0; };
   ["pointerup", "pointercancel", "lostpointercapture"].forEach((ev) => canvas.addEventListener(ev, joyEnd));
-  document.querySelectorAll("[data-sv]").forEach((b) => bindHold(b, () => { if (running) pause(); else if (!g || !g.over) start(false); else start(true); }, 0));
+  document.querySelectorAll("[data-sv]").forEach((b) => bindHold(b, () => { if (g && g.choosing) return; if (!homeOpen) showHome(); else start(!hasPausedRun()); }, 0));
   window.addEventListener("resize", () => { if (!running) { fitArena(); if (!g) drawIdle(); else draw(); } });
   document.addEventListener("visibilitychange", () => { if (document.hidden) pause(); });
 
-  fitArena(); drawIdle(); renderSide();
+  fitArena(); drawIdle(); renderSide(); showHome();
   return { pause };
 })();
 
