@@ -26,7 +26,7 @@
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-family: var(--mono); font-size: 13px; }
 body { display: flex; flex-direction: column; overflow: hidden; height: 100dvh; -webkit-text-size-adjust: 100%; }
 button { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
-#snakeCanvas, #tetrisCanvas, #svCanvas, #flCanvas { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; max-width: 100%; height: auto; }
+#snakeCanvas, #tetrisCanvas, #svCanvas, #flCanvas, #shCanvas, #swCanvas, #wmCanvas, #plCanvas { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; max-width: 100%; height: auto; }
 .touchbar { display: none; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
 .touchbar button { flex: 1; min-width: 48px; padding: 14px 0; font-size: 18px; }
 #svArenaPanel.pseudo-fs {
@@ -163,6 +163,10 @@ canvas { display: block; max-width: 100%; }
     <button class="nav" data-view="tetris"><span class="ic">&#9638;</span><span class="lbl">DB Defragmenter</span></button>
     <button class="nav" data-view="surv"><span class="ic">&#9763;</span><span class="lbl">Load Test Sim</span></button>
     <button class="nav" data-view="flap"><span class="ic">&#10148;</span><span class="lbl">Packet Router</span></button>
+    <button class="nav" data-view="shaft"><span class="ic">&#8645;</span><span class="lbl">Stack Descent</span></button>
+    <button class="nav" data-view="swing"><span class="ic">&#9678;</span><span class="lbl">Hook Swing</span></button>
+    <button class="nav" data-view="worm"><span class="ic">&#8779;</span><span class="lbl">Log Trail</span></button>
+    <button class="nav" data-view="pulse"><span class="ic">&#9673;</span><span class="lbl">Shield Pulse</span></button>
     <h4>Operations</h4>
     <button class="nav" data-view="idle"><span class="ic">&#9881;</span><span class="lbl">Task Automation</span></button>
   </nav>
@@ -286,6 +290,86 @@ canvas { display: block; max-width: 100%; }
       </div>
     </section>
 
+    <!-- ======================= STACK DESCENT ======================= -->
+    <section class="view" id="view-shaft">
+      <div class="grid g2" style="grid-template-columns:auto 1fr">
+        <div class="panel"><div class="ph"><span class="t">stack-descent — shaft traversal</span><span id="shStatus">idle</span></div>
+          <div class="pb">
+            <canvas id="shCanvas" width="360" height="560" style="max-height:calc(100dvh - 190px);width:auto;max-width:100%;margin:0 auto"></canvas>
+            <div class="hint keys">space / ↑ / click: flip gravity · Esc: overview</div>
+            <div class="hint">touch: tap anywhere to flip gravity</div>
+          </div></div>
+        <div class="panel"><div class="ph"><span class="t">run stats</span><span>persistent</span></div>
+          <div class="pb">
+            <div class="kv"><span>score</span><span id="shScore">0</span></div>
+            <div class="kv"><span>best</span><span id="shBest" class="s">0</span></div>
+            <div class="kv"><span>attempts</span><span id="shRuns">0</span></div>
+            <div class="kv"><span>fall speed</span><span id="shExtra">-</span></div>
+            <div class="hint" style="margin-top:12px;white-space:normal">You fall down a shaft. Gravity pulls you sideways — tap to flip it and slip through the gaps in the walls. Gaps start moving after a few walls.</div>
+          </div></div>
+      </div>
+    </section>
+
+    <!-- ======================= HOOK SWING ======================= -->
+    <section class="view" id="view-swing">
+      <div class="grid g2" style="grid-template-columns:auto 1fr">
+        <div class="panel"><div class="ph"><span class="t">hook-swing — latency pendulum</span><span id="swStatus">idle</span></div>
+          <div class="pb">
+            <canvas id="swCanvas" width="600" height="380" style="max-height:calc(100dvh - 190px);width:auto;max-width:100%;margin:0 auto"></canvas>
+            <div class="hint keys">space / ↑ / click: release, then grab · Esc: overview</div>
+            <div class="hint">touch: tap to let go, tap again to grab</div>
+          </div></div>
+        <div class="panel"><div class="ph"><span class="t">run stats</span><span>persistent</span></div>
+          <div class="pb">
+            <div class="kv"><span>score</span><span id="swScore">0</span></div>
+            <div class="kv"><span>best</span><span id="swBest" class="s">0</span></div>
+            <div class="kv"><span>attempts</span><span id="swRuns">0</span></div>
+            <div class="kv"><span>hooks grabbed</span><span id="swExtra">-</span></div>
+            <div class="hint" style="margin-top:12px;white-space:normal">You swing from a hook. Let go on the upswing to fly forward, then grab the next hook — the one in reach glows green. Don't touch the floor or ceiling.</div>
+          </div></div>
+      </div>
+    </section>
+
+    <!-- ======================= LOG TRAIL ======================= -->
+    <section class="view" id="view-worm">
+      <div class="grid g2" style="grid-template-columns:auto 1fr">
+        <div class="panel"><div class="ph"><span class="t">log-trail — packet chain</span><span id="wmStatus">idle</span></div>
+          <div class="pb">
+            <canvas id="wmCanvas" width="360" height="560" style="max-height:calc(100dvh - 190px);width:auto;max-width:100%;margin:0 auto"></canvas>
+            <div class="hint keys">space / ↑ / click: flap · Esc: overview</div>
+            <div class="hint">touch: tap to flap</div>
+          </div></div>
+        <div class="panel"><div class="ph"><span class="t">run stats</span><span>persistent</span></div>
+          <div class="pb">
+            <div class="kv"><span>score</span><span id="wmScore">0</span></div>
+            <div class="kv"><span>best</span><span id="wmBest" class="s">0</span></div>
+            <div class="kv"><span>attempts</span><span id="wmRuns">0</span></div>
+            <div class="kv"><span>tail length</span><span id="wmExtra">-</span></div>
+            <div class="hint" style="margin-top:12px;white-space:normal">Fly through the gaps like Packet Router, but every gold orb adds a tail segment. Later gaps move, and your tail can clip them on the way through.</div>
+          </div></div>
+      </div>
+    </section>
+
+    <!-- ======================= SHIELD PULSE ======================= -->
+    <section class="view" id="view-pulse">
+      <div class="grid g2" style="grid-template-columns:auto 1fr">
+        <div class="panel"><div class="ph"><span class="t">shield-pulse — ddos defense</span><span id="plStatus">idle</span></div>
+          <div class="pb">
+            <canvas id="plCanvas" width="520" height="520" style="max-height:calc(100dvh - 190px);width:auto;max-width:100%;margin:0 auto"></canvas>
+            <div class="hint keys">hold space / ↑ / mouse: expand shield · Esc: overview</div>
+            <div class="hint">touch: hold to expand the shield</div>
+          </div></div>
+        <div class="panel"><div class="ph"><span class="t">run stats</span><span>persistent</span></div>
+          <div class="pb">
+            <div class="kv"><span>score</span><span id="plScore">0</span></div>
+            <div class="kv"><span>best</span><span id="plBest" class="s">0</span></div>
+            <div class="kv"><span>attempts</span><span id="plRuns">0</span></div>
+            <div class="kv"><span>lives</span><span id="plExtra">-</span></div>
+            <div class="hint" style="margin-top:12px;white-space:normal">You can't move. Hold to grow a shield that bounces incoming debris away. Hold too long and it overheats for two seconds. +1 life every 25 deflects.</div>
+          </div></div>
+      </div>
+    </section>
+
     <!-- ======================= MODULE C: IDLE ======================= -->
     <section class="view" id="view-idle">
       <div class="grid g4">
@@ -370,7 +454,7 @@ function bindHold(btn, fn, repeat) {
 /* ====================================================================
    NAVIGATION / SHELL
    ==================================================================== */
-const VIEW_LABELS = { dash: "overview", snake: "network-flow", tetris: "db-defrag", surv: "load-test", flap: "packet-router", idle: "task-automation" };
+const VIEW_LABELS = { dash: "overview", snake: "network-flow", tetris: "db-defrag", surv: "load-test", flap: "packet-router", shaft: "stack-descent", swing: "hook-swing", worm: "log-trail", pulse: "shield-pulse", idle: "task-automation" };
 let currentView = "dash";
 
 function showView(name) {
@@ -379,6 +463,7 @@ function showView(name) {
   if (currentView === "tetris" && name !== "tetris") Tetris.pause();
   if (currentView === "surv" && name !== "surv") Survivor.pause();
   if (currentView === "flap" && name !== "flap") Flappy.pause();
+  if (ARCADES[currentView] && name !== currentView) ARCADES[currentView].pause();
   currentView = name;
   document.querySelectorAll(".view").forEach((v) => v.classList.toggle("active", v.id === "view-" + name));
   document.querySelectorAll(".nav").forEach((b) => b.classList.toggle("active", b.dataset.view === name));
@@ -386,6 +471,7 @@ function showView(name) {
   $("sbView").textContent = VIEW_LABELS[name];
   if (name === "dash") Dashboard.resize();
   if (name === "flap") Flappy.show();
+  if (ARCADES[name]) ARCADES[name].show();
 }
 
 document.querySelectorAll(".nav").forEach((b) => b.addEventListener("click", () => showView(b.dataset.view)));
@@ -398,7 +484,7 @@ document.addEventListener("keydown", (e) => {
 $("cmdk").addEventListener("keydown", (e) => {
   if (e.key !== "Enter") return;
   const v = e.target.value.trim().toLowerCase();
-  const map = { overview: "dash", dash: "dash", flow: "snake", network: "snake", defrag: "tetris", db: "tetris", load: "surv", route: "flap", packet: "flap", flappy: "flap", test: "surv", automation: "idle", tasks: "idle" };
+  const map = { overview: "dash", dash: "dash", flow: "snake", network: "snake", defrag: "tetris", db: "tetris", load: "surv", route: "flap", packet: "flap", flappy: "flap", descent: "shaft", shaft: "shaft", swing: "swing", hook: "swing", trail: "worm", worm: "worm", shield: "pulse", pulse: "pulse", test: "surv", automation: "idle", tasks: "idle" };
   const hit = Object.keys(map).find((k) => v.includes(k));
   if (hit) showView(map[hit]);
   e.target.value = "";
@@ -2575,6 +2661,524 @@ const Flappy = (() => {
   reset(); renderSkins(); draw();
   return { show, pause };
 })();
+
+/* ====================================================================
+   ONE-BUTTON ARCADE FRAMEWORK
+   Shared loop, input, pause, save and overlays for the four tap games below.
+   ==================================================================== */
+const ARCADES = {};
+
+function makeArcade(cfg) {
+  const canvas = $(cfg.canvasId), ctx = canvas.getContext("2d"), W = canvas.width, H = canvas.height;
+  const save = Store.load(cfg.key, { best: 0, runs: 0 });
+  const A = { ctx, W, H, state: "ready", score: 0, held: false, t: 0, deadT: 0, flash: 0, newBest: false, save, extra: undefined };
+  const setStatus = (s) => { $(cfg.ids.status).textContent = s; };
+  let raf = 0, last = 0, active = false;
+
+  A.hud = () => {
+    $(cfg.ids.score).textContent = A.score;
+    $(cfg.ids.best).textContent = save.best;
+    $(cfg.ids.runs).textContent = save.runs;
+    $(cfg.ids.extra).textContent = A.extra === undefined ? "-" : A.extra;
+  };
+  A.reset = () => {
+    A.state = "ready"; A.score = 0; A.t = 0; A.deadT = 0; A.flash = 0; A.newBest = false; A.held = false; A.extra = undefined;
+    cfg.reset(A);
+    setStatus("ready — tap to start");
+    A.hud();
+  };
+  A.die = () => {
+    if (A.state !== "playing") return;
+    A.state = "dead"; A.deadT = 0; A.flash = 0.25; A.held = false;
+    save.runs++;
+    if (A.score > save.best) { save.best = A.score; A.newBest = true; }
+    Store.save(cfg.key, save);
+    setStatus("crashed");
+    A.hud();
+  };
+
+  function press() {
+    if (A.state === "dead") { if (A.deadT > 0.45) A.reset(); return; }
+    const was = A.state;
+    if (was === "paused") { A.state = "playing"; setStatus("running"); return; }
+    if (was === "ready") {
+      A.state = "playing"; setStatus("running");
+      if (cfg.onStart) cfg.onStart(A);
+      if (!cfg.firstTapActs) return;
+    }
+    A.held = true;
+    if (cfg.onPress) cfg.onPress(A);
+  }
+  function release() {
+    if (!A.held) return;
+    A.held = false;
+    if (cfg.onRelease) cfg.onRelease(A);
+  }
+
+  function panel(lines) {
+    const bw = Math.min(W - 40, 300), bh = 40 + lines.length * 24, bx = (W - bw) / 2, by = H / 2 - bh / 2;
+    ctx.fillStyle = "rgba(1,4,9,0.84)"; ctx.fillRect(bx, by, bw, bh);
+    ctx.strokeStyle = "#30363d"; ctx.lineWidth = 1; ctx.strokeRect(bx + 0.5, by + 0.5, bw - 1, bh - 1);
+    lines.forEach((l, i) => { ctx.fillStyle = l[1]; ctx.font = (i === 0 ? "bold 15px" : "13px") + " monospace"; ctx.fillText(l[0], W / 2, by + 30 + i * 24); });
+  }
+  function draw() {
+    ctx.save();
+    cfg.draw(A);
+    ctx.restore();
+    ctx.textAlign = "center";
+    if (A.state !== "ready" && !cfg.hideScore) {
+      ctx.font = "bold 40px monospace";
+      ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.fillText(A.score, W / 2 + 2, 62);
+      ctx.fillStyle = "#c9d1d9"; ctx.fillText(A.score, W / 2, 60);
+    }
+    if (A.flash > 0) { ctx.fillStyle = "rgba(248,81,73," + Math.min(0.5, A.flash * 2) + ")"; ctx.fillRect(0, 0, W, H); }
+    const my = H * (cfg.msgY || 0.62);
+    if (A.state === "ready") {
+      ctx.font = "13px monospace";
+      ctx.fillStyle = "#8b949e"; ctx.fillText(cfg.title, W / 2, my);
+      ctx.fillStyle = "#3fb950"; ctx.fillText(cfg.readyText, W / 2, my + 22);
+    } else if (A.state === "paused") {
+      panel([["job suspended", "#c9d1d9"], ["tap to resume", "#3fb950"]]);
+    } else if (A.state === "dead") {
+      const lines = [[cfg.deathText, "#f85149"], ["score: " + A.score, "#c9d1d9"], ["best: " + save.best, "#c9d1d9"]];
+      if (A.newBest && A.score > 0) lines.push(["★ new best ★", "#ffd33d"]);
+      lines.push([A.deadT > 0.45 ? "tap to retry" : " ", "#3fb950"]);
+      panel(lines);
+    }
+    ctx.textAlign = "left";
+  }
+  function frame(tm) {
+    if (!active) return;
+    const dt = Math.min(0.033, (tm - (last || tm)) / 1000); last = tm;
+    if (A.state !== "paused") {
+      if (A.state !== "dead") A.t += dt; else A.deadT += dt;
+      if (A.flash > 0) A.flash -= dt;
+      cfg.update(A, dt);
+    }
+    draw();
+    raf = requestAnimationFrame(frame);
+  }
+  function show() { if (active) return; active = true; last = 0; raf = requestAnimationFrame(frame); }
+  function pause() {
+    if (A.state === "playing") { A.state = "paused"; A.held = false; setStatus("suspended"); }
+    active = false; cancelAnimationFrame(raf);
+    draw();
+  }
+
+  const isKey = (k) => k === " " || k === "arrowup" || k === "w";
+  canvas.addEventListener("pointerdown", (e) => { e.preventDefault(); try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ } press(); });
+  ["pointerup", "pointercancel"].forEach((ev) => canvas.addEventListener(ev, release));
+  document.addEventListener("keydown", (e) => {
+    if (currentView !== cfg.view || !isKey(e.key.toLowerCase())) return;
+    e.preventDefault();
+    if (!e.repeat) press();
+  });
+  document.addEventListener("keyup", (e) => { if (currentView === cfg.view && isKey(e.key.toLowerCase())) release(); });
+  document.addEventListener("visibilitychange", () => {
+    if (currentView !== cfg.view) return;
+    if (document.hidden) pause(); else show();
+  });
+
+  A.reset();
+  draw();
+  ARCADES[cfg.view] = { show, pause, A };
+  return A;
+}
+
+function arcadeBg(A, top, bottom) {
+  const g = A.ctx.createLinearGradient(0, 0, 0, A.H);
+  g.addColorStop(0, top); g.addColorStop(1, bottom);
+  A.ctx.fillStyle = g; A.ctx.fillRect(0, 0, A.W, A.H);
+}
+
+/* --------------------------------------------------------------------
+   GAME 5: STACK DESCENT — reverse-gravity drop down a shaft
+   Tap flips sideways gravity; slip through the gaps in rising walls.
+   -------------------------------------------------------------------- */
+{
+  const SP = 190, TH = 18, PS = 11;
+  const gapW = (A) => Math.max(78, 106 - A.score * 0.9);
+  const gapAt = (A, w) => { const gw = gapW(A); return Math.max(gw / 2 + 14, Math.min(A.W - gw / 2 - 14, w.base + w.amp * Math.sin(A.t * w.freq + w.ph))); };
+  function addWall(A, y) {
+    A.walls.push({ y, base: rand(70, A.W - 70), amp: Math.min(80, Math.max(0, (A.score - 2) * 6)) * rand(0.4, 1), freq: rand(0.8, 1.6), ph: rand(0, 6.28), passed: false });
+  }
+  makeArcade({
+    view: "shaft", canvasId: "shCanvas", key: "shaft", firstTapActs: true,
+    title: "$ ./descend --stack-trace", readyText: "tap to flip gravity", deathText: "SEGFAULT: hit a wall",
+    ids: { status: "shStatus", score: "shScore", best: "shBest", runs: "shRuns", extra: "shExtra" },
+    reset(A) {
+      A.p = { x: A.W / 2, y: 190, vx: 0 }; A.dir = 1; A.walls = []; A.trail = []; A.speed = 150; A.stripe = 0;
+      for (let i = 0; i < 4; i++) addWall(A, 360 + i * SP);
+    },
+    onPress(A) { A.dir = -A.dir; A.p.vx *= 0.4; },
+    update(A, dt) {
+      const p = A.p;
+      A.stripe = (A.stripe + A.speed * dt) % 40;
+      if (A.state === "ready") { p.x = A.W / 2 + Math.sin(A.t * 2) * 30; return; }
+      if (A.state !== "playing") return;
+      A.speed = Math.min(290, 150 + A.score * 4);
+      p.vx = Math.max(-440, Math.min(440, p.vx + A.dir * 1600 * dt));
+      p.x += p.vx * dt;
+      if (p.x < 10 + PS) { p.x = 10 + PS; p.vx = Math.abs(p.vx) * 0.25; }
+      if (p.x > A.W - 10 - PS) { p.x = A.W - 10 - PS; p.vx = -Math.abs(p.vx) * 0.25; }
+      A.trail.forEach((t) => { t.y -= A.speed * dt; });
+      A.trail.push({ x: p.x, y: p.y });
+      if (A.trail.length > 24) A.trail.shift();
+      A.walls.forEach((w) => { w.y -= A.speed * dt; });
+      for (const w of A.walls) {
+        if (!w.passed && w.y + TH < p.y - PS) { w.passed = true; A.score++; A.hud(); }
+        if (p.y + PS > w.y && p.y - PS < w.y + TH) {
+          const gw = gapW(A), gx = gapAt(A, w);
+          if (p.x - PS < gx - gw / 2 || p.x + PS > gx + gw / 2) { A.die(); return; }
+        }
+      }
+      while (A.walls[A.walls.length - 1].y < A.H + 40) addWall(A, A.walls[A.walls.length - 1].y + SP);
+      A.walls = A.walls.filter((w) => w.y > -TH - 10);
+      A.extra = Math.round(A.speed) + " px/s";
+    },
+    draw(A) {
+      const ctx = A.ctx, W = A.W, H = A.H, p = A.p;
+      arcadeBg(A, "#050a14", "#0b1424");
+      ctx.strokeStyle = "rgba(88,166,255,0.1)"; ctx.lineWidth = 1;
+      for (let i = 0; i < 10; i++) {
+        const x = (i * 47 + 23) % W, off = (A.stripe * 4 + i * 61) % (H + 60);
+        ctx.beginPath(); ctx.moveTo(x, H - off); ctx.lineTo(x, H - off + 40); ctx.stroke();
+      }
+      ctx.fillStyle = "#2a1015"; ctx.fillRect(0, 0, 10, H); ctx.fillRect(W - 10, 0, 10, H);
+      ctx.fillStyle = "#f85149";
+      for (let y = -40; y < H + 40; y += 40) { const yy = y - A.stripe; ctx.fillRect(0, yy, 10, 18); ctx.fillRect(W - 10, yy + 20, 10, 18); }
+      A.walls.forEach((w) => {
+        const gw = gapW(A), gx = gapAt(A, w), l = gx - gw / 2, r = gx + gw / 2;
+        ctx.fillStyle = "#161b22"; ctx.fillRect(0, w.y, l, TH); ctx.fillRect(r, w.y, W - r, TH);
+        ctx.strokeStyle = "#f85149"; ctx.lineWidth = 2;
+        ctx.strokeRect(1, w.y + 1, l - 2, TH - 2); ctx.strokeRect(r + 1, w.y + 1, W - r - 2, TH - 2);
+        ctx.fillStyle = "#f85149"; ctx.fillRect(l - 6, w.y - 2, 6, TH + 4); ctx.fillRect(r, w.y - 2, 6, TH + 4);
+      });
+      A.trail.forEach((t, i) => { ctx.globalAlpha = (i / A.trail.length) * 0.45; ctx.fillStyle = "#58a6ff"; ctx.fillRect(t.x - 6, t.y - 6, 12, 12); });
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = "#58a6ff"; ctx.fillRect(p.x - PS, p.y - PS, PS * 2, PS * 2);
+      ctx.fillStyle = "rgba(255,255,255,0.2)"; ctx.fillRect(p.x - PS, p.y - PS, PS * 2, 4);
+      ctx.fillStyle = "#010409"; ctx.font = "bold 14px monospace"; ctx.textAlign = "center";
+      ctx.fillText(A.dir > 0 ? ">" : "<", p.x, p.y + 5);
+      ctx.fillStyle = "rgba(88,166,255,0.6)";
+      const ax = p.x + A.dir * (PS + 8);
+      ctx.beginPath(); ctx.moveTo(ax + A.dir * 7, p.y); ctx.lineTo(ax, p.y - 5); ctx.lineTo(ax, p.y + 5); ctx.closePath(); ctx.fill();
+      ctx.textAlign = "left";
+    }
+  });
+}
+
+/* --------------------------------------------------------------------
+   GAME 6: HOOK SWING — pendulum swing, release, grab the next hook
+   -------------------------------------------------------------------- */
+{
+  const G_SWING = 1000, G_FLY = 820, REACH = 235;
+  function genHooks(A) {
+    while (A.hooks[A.hooks.length - 1].x < A.cam + A.W + 320) {
+      const l = A.hooks[A.hooks.length - 1];
+      A.hooks.push({ x: l.x + rand(150, 215), y: rand(45, 100) });
+    }
+    A.hooks = A.hooks.filter((h) => h.x > A.cam - 120 || h === A.anchor);
+  }
+  function placeOnRope(A) {
+    A.p.x = A.anchor.x + A.L * Math.sin(A.th);
+    A.p.y = A.anchor.y + A.L * Math.cos(A.th);
+  }
+  function grabTarget(A) {
+    let best = null, bd = Infinity;
+    A.hooks.forEach((h) => {
+      if (h.x < A.p.x - 30) return;
+      const d = Math.hypot(h.x - A.p.x, h.y - A.p.y);
+      if (d <= REACH && d < bd) { best = h; bd = d; }
+    });
+    return best;
+  }
+  function swingStep(A, dt) {
+    const steps = 4, h = dt / steps;
+    for (let i = 0; i < steps; i++) { A.om += -(G_SWING / A.L) * Math.sin(A.th) * h; A.th += A.om * h; }
+    placeOnRope(A);
+  }
+  makeArcade({
+    view: "swing", canvasId: "swCanvas", key: "swing", firstTapActs: false, msgY: 0.72,
+    title: "$ ./swing --hooks", readyText: "tap: release · tap again: grab", deathText: "CONNECTION DROPPED",
+    ids: { status: "swStatus", score: "swScore", best: "swBest", runs: "swRuns", extra: "swExtra" },
+    reset(A) {
+      A.cam = 0; A.hooks = [{ x: 150, y: 70 }]; A.anchor = A.hooks[0];
+      A.mode = "swing"; A.L = 150; A.th = -0.95; A.om = 0; A.grabs = 0; A.miss = 0; A.trail = [];
+      A.p = { x: 0, y: 0, vx: 0, vy: 0 };
+      genHooks(A); placeOnRope(A); A.startX = A.p.x;
+    },
+    onPress(A) {
+      if (A.mode === "swing") {
+        A.p.vx = A.L * A.om * Math.cos(A.th);
+        A.p.vy = -A.L * A.om * Math.sin(A.th);
+        A.mode = "fly"; A.anchor = null;
+        return;
+      }
+      const h = grabTarget(A);
+      if (!h) { A.miss = 0.4; return; }
+      const dx = A.p.x - h.x, dy = A.p.y - h.y;
+      A.L = Math.max(40, Math.hypot(dx, dy));
+      A.th = Math.atan2(dx, dy);
+      A.om = (A.p.vx * Math.cos(A.th) - A.p.vy * Math.sin(A.th)) / A.L;
+      A.anchor = h; A.mode = "swing"; A.grabs++; A.extra = A.grabs;
+    },
+    update(A, dt) {
+      if (A.miss > 0) A.miss -= dt;
+      if (A.state === "ready") { swingStep(A, dt); return; }
+      if (A.state !== "playing") return;
+      const p = A.p;
+      if (A.mode === "swing") swingStep(A, dt);
+      else { p.vy += G_FLY * dt; p.x += p.vx * dt; p.y += p.vy * dt; }
+      A.trail.push({ x: p.x, y: p.y });
+      if (A.trail.length > 18) A.trail.shift();
+      A.cam = Math.max(A.cam, p.x - 160);
+      genHooks(A);
+      const sc = Math.max(0, Math.floor((p.x - A.startX) / 12));
+      if (sc > A.score) { A.score = sc; A.hud(); }
+      if (p.y > A.H - 26 || p.y < 4) A.die();
+    },
+    draw(A) {
+      const ctx = A.ctx, W = A.W, H = A.H, p = A.p;
+      arcadeBg(A, "#06101c", "#0b1424");
+      ctx.strokeStyle = "rgba(88,166,255,0.08)"; ctx.lineWidth = 1;
+      const off = (A.cam * 0.4) % 60;
+      for (let x = -off; x < W; x += 60) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+      ctx.fillStyle = "#2a1015"; ctx.fillRect(0, H - 22, W, 22); ctx.fillRect(0, 0, W, 4);
+      ctx.fillStyle = "#f85149";
+      const so = A.cam % 24;
+      for (let x = -so; x < W; x += 24) { ctx.beginPath(); ctx.moveTo(x, H - 22); ctx.lineTo(x + 12, H - 34); ctx.lineTo(x + 24, H - 22); ctx.closePath(); ctx.fill(); }
+      ctx.save(); ctx.translate(-A.cam, 0);
+      const target = A.mode === "fly" && A.state === "playing" ? grabTarget(A) : null;
+      A.hooks.forEach((h) => {
+        if (h === target) { ctx.strokeStyle = "rgba(63,185,80,0.35)"; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(h.x, h.y); ctx.stroke(); ctx.setLineDash([]); }
+        ctx.strokeStyle = h === target ? "#3fb950" : h === A.anchor ? "#d29922" : "#8b949e"; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(h.x, h.y, 8, 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = "#30363d"; ctx.fillRect(h.x - 1, 0, 2, h.y - 8);
+      });
+      if (A.mode === "swing" && A.anchor) {
+        ctx.strokeStyle = "#d29922"; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(A.anchor.x, A.anchor.y); ctx.lineTo(p.x, p.y); ctx.stroke();
+      }
+      A.trail.forEach((t, i) => { ctx.globalAlpha = (i / A.trail.length) * 0.4; ctx.fillStyle = "#3fb950"; ctx.fillRect(t.x - 4, t.y - 4, 8, 8); });
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = "#3fb950"; ctx.beginPath(); ctx.arc(p.x, p.y, 11, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#010409"; ctx.font = "bold 12px monospace"; ctx.textAlign = "center"; ctx.fillText(">", p.x + 1, p.y + 4);
+      if (A.miss > 0) { ctx.fillStyle = "rgba(248,81,73," + A.miss * 2 + ")"; ctx.font = "12px monospace"; ctx.fillText("no hook in reach", p.x, p.y - 20); }
+      ctx.restore();
+      ctx.textAlign = "left";
+    }
+  });
+}
+
+/* --------------------------------------------------------------------
+   GAME 7: LOG TRAIL — flappy flight that grows a snake tail
+   Every orb adds a tail segment; moving gaps can clip the tail later.
+   -------------------------------------------------------------------- */
+{
+  const GROUND = 56, HEADX = 110, R = 10, TR = 6, SEG = 15, PW = 56, PSP = 230, GRAV = 1350, FLAP = -390;
+  const gapSize = (A) => Math.max(128, 160 - A.score * 0.8);
+  const gapY = (A, pp) => {
+    const G = gapSize(A), lo = G / 2 + 30, hi = A.H - GROUND - G / 2 - 30;
+    return Math.max(lo, Math.min(hi, pp.base + pp.amp * Math.sin(A.t * pp.freq + pp.ph)));
+  };
+  function genPipes(A) {
+    while (A.lastPipeX < A.S + A.W + 300) {
+      A.lastPipeX += PSP;
+      A.pipes.push({ x: A.lastPipeX, base: rand(150, A.H - GROUND - 150), amp: Math.min(70, Math.max(0, (A.score - 3) * 7)) * rand(0.5, 1),
+        freq: rand(0.9, 1.6), ph: rand(0, 6.28), passed: false, orb: { x: A.lastPipeX + 143, y: rand(110, A.H - GROUND - 110), got: false } });
+    }
+    A.pipes = A.pipes.filter((pp) => pp.x + PW + 160 > A.S);
+  }
+  function hitsPipe(A, cx, cy, r, pp) {
+    if (cx + r <= pp.x || cx - r >= pp.x + PW) return false;
+    const gy = gapY(A, pp), G = gapSize(A);
+    return cy - r < gy - G / 2 || cy + r > gy + G / 2;
+  }
+  function computeSegs(A) {
+    const segs = [], path = A.path;
+    let dist = 0, target = SEG;
+    for (let i = path.length - 1; i > 0 && segs.length < A.tail; i--) {
+      const a = path[i], b = path[i - 1], len = Math.hypot(b.x - a.x, b.y - a.y);
+      if (!len) continue;
+      while (dist + len >= target && segs.length < A.tail) {
+        const f = (target - dist) / len;
+        segs.push({ x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f });
+        target += SEG;
+      }
+      dist += len;
+    }
+    A.segs = segs;
+  }
+  makeArcade({
+    view: "worm", canvasId: "wmCanvas", key: "worm", firstTapActs: true,
+    title: "$ tail -f /var/log/packets", readyText: "tap to flap · grab orbs to grow", deathText: "LOG ROTATED: chain broken",
+    ids: { status: "wmStatus", score: "wmScore", best: "wmBest", runs: "wmRuns", extra: "wmExtra" },
+    reset(A) {
+      A.S = 0; A.y = (A.H - GROUND) / 2; A.vy = 0; A.path = []; A.segs = []; A.tail = 0; A.pipes = []; A.lastPipeX = 200; A.extra = 0;
+      genPipes(A);
+    },
+    onPress(A) { A.vy = FLAP; },
+    update(A, dt) {
+      if (A.state === "ready") { A.y = (A.H - GROUND) / 2 + Math.sin(A.t * 5) * 7; return; }
+      if (A.state === "dead") {
+        A.vy = Math.min(620, A.vy + GRAV * dt); A.y = Math.min(A.H - GROUND - R, A.y + A.vy * dt);
+        return;
+      }
+      if (A.state !== "playing") return;
+      const speed = Math.min(215, 140 + A.score * 2.2);
+      A.S += speed * dt;
+      A.vy = Math.min(620, A.vy + GRAV * dt);
+      A.y += A.vy * dt;
+      const hx = A.S + HEADX;
+      A.path.push({ x: hx, y: A.y });
+      if (A.path.length > 1200) A.path.splice(0, A.path.length - 1200);
+      computeSegs(A);
+      if (A.y - R < 0 || A.y + R > A.H - GROUND) { A.die(); return; }
+      for (const pp of A.pipes) {
+        if (hitsPipe(A, hx, A.y, R, pp) || A.segs.some((s) => hitsPipe(A, s.x, s.y, TR, pp))) { A.die(); return; }
+        if (!pp.passed && hx - R > pp.x + PW) { pp.passed = true; A.score++; A.hud(); }
+        if (!pp.orb.got && Math.hypot(hx - pp.orb.x, A.y - pp.orb.y) < R + 9) {
+          pp.orb.got = true; A.tail = Math.min(45, A.tail + 1); A.score++; A.extra = A.tail; A.hud();
+        }
+      }
+      genPipes(A);
+    },
+    draw(A) {
+      const ctx = A.ctx, W = A.W, H = A.H;
+      arcadeBg(A, "#050a14", "#0b1424");
+      ctx.font = "10px monospace"; ctx.fillStyle = "rgba(139,148,158,0.12)";
+      for (let i = 0; i < 14; i++) {
+        const y = 30 + i * 34, x = -((A.S * 0.3 + i * 53) % 260) + W;
+        ctx.fillText("INFO pkt=" + (i * 97 % 1000) + " ok", x - 120, y);
+      }
+      A.pipes.forEach((pp) => {
+        const x = pp.x - A.S, gy = gapY(A, pp), G = gapSize(A);
+        [[0, gy - G / 2], [gy + G / 2, H - GROUND - gy - G / 2]].forEach(([y0, h]) => {
+          ctx.fillStyle = "#161b22"; ctx.fillRect(x, y0, PW, h);
+          ctx.strokeStyle = "#f85149"; ctx.lineWidth = 2; ctx.strokeRect(x + 1, y0 + 1, PW - 2, h - 2);
+        });
+        ctx.fillStyle = "#f85149"; ctx.fillRect(x - 4, gy - G / 2 - 14, PW + 8, 14); ctx.fillRect(x - 4, gy + G / 2, PW + 8, 14);
+        if (!pp.orb.got) {
+          const ox = pp.orb.x - A.S, pulse = 6 + Math.sin(A.t * 6) * 1.5;
+          ctx.fillStyle = "#ffd33d"; ctx.beginPath(); ctx.arc(ox, pp.orb.y, pulse, 0, Math.PI * 2); ctx.fill();
+          ctx.strokeStyle = "rgba(255,211,61,0.35)"; ctx.beginPath(); ctx.arc(ox, pp.orb.y, pulse + 5, 0, Math.PI * 2); ctx.stroke();
+        }
+      });
+      ctx.fillStyle = "#0d1117"; ctx.fillRect(0, H - GROUND, W, GROUND);
+      ctx.fillStyle = "#30363d"; ctx.fillRect(0, H - GROUND, W, 2);
+      ctx.fillStyle = "#8b949e"; ctx.font = "10px monospace"; ctx.fillText("$ tail -f packets.log  # chain=" + (A.tail + 1), 8, H - 22);
+      for (let i = A.segs.length - 1; i >= 0; i--) {
+        const s = A.segs[i];
+        ctx.fillStyle = i % 2 ? "#2ea043" : "#3fb950";
+        ctx.fillRect(s.x - A.S - TR, s.y - TR, TR * 2, TR * 2);
+      }
+      const hx = HEADX, tilt = Math.max(-0.5, Math.min(1.2, A.vy / 480));
+      ctx.save(); ctx.translate(hx, A.y); ctx.rotate(tilt);
+      ctx.fillStyle = "#3fb950"; ctx.fillRect(-R - 2, -R, R * 2 + 4, R * 2);
+      ctx.fillStyle = "#010409"; ctx.font = "bold 13px monospace"; ctx.textAlign = "center"; ctx.fillText(">", 2, 5);
+      ctx.restore();
+      ctx.textAlign = "left";
+    }
+  });
+}
+
+/* --------------------------------------------------------------------
+   GAME 8: SHIELD PULSE — stand still, hold to grow a deflector bubble
+   Hold too long and it overheats and pops.
+   -------------------------------------------------------------------- */
+{
+  const CORE = 14, RMAX = 150;
+  function spawnDebris(A) {
+    const a = rand(0, Math.PI * 2), d = 360, big = Math.random() < 0.12;
+    const x = A.W / 2 + Math.cos(a) * d, y = A.H / 2 + Math.sin(a) * d;
+    const aim = Math.atan2(A.H / 2 - y, A.W / 2 - x) + rand(-0.2, 0.2);
+    const sp = Math.min(220, 80 + A.score * 2 + rand(0, 50)) * (big ? 0.7 : 1);
+    A.debris.push({ x, y, vx: Math.cos(aim) * sp, vy: Math.sin(aim) * sp, r: big ? 17 : rand(6, 11), rot: rand(0, 6), out: false });
+  }
+  function burst(A, x, y, color, n) {
+    for (let i = 0; i < n; i++) A.parts.push({ x, y, vx: rand(-160, 160), vy: rand(-160, 160), t: 0.4, color });
+  }
+  makeArcade({
+    view: "pulse", canvasId: "plCanvas", key: "pulse", firstTapActs: true, msgY: 0.8,
+    title: "$ ./shield --ddos", readyText: "hold to expand the shield", deathText: "NODE DOWN: flood got through",
+    ids: { status: "plStatus", score: "plScore", best: "plBest", runs: "plRuns", extra: "plExtra" },
+    reset(A) { A.br = 0; A.heat = 0; A.lock = 0; A.debris = []; A.parts = []; A.lives = 3; A.inv = 0; A.spawn = 1.2; A.extra = A.lives; },
+    update(A, dt) {
+      A.parts.forEach((q) => { q.x += q.vx * dt; q.y += q.vy * dt; q.t -= dt; });
+      A.parts = A.parts.filter((q) => q.t > 0);
+      if (A.state !== "playing") { A.br = Math.max(0, A.br - 600 * dt); return; }
+      const cx = A.W / 2, cy = A.H / 2;
+      if (A.inv > 0) A.inv -= dt;
+      if (A.lock > 0) {
+        A.lock -= dt; A.br = Math.max(0, A.br - 700 * dt);
+      } else if (A.held) {
+        A.br = Math.min(RMAX, Math.max(CORE + 6, A.br) + 300 * dt);
+        A.heat += 0.62 * dt;
+        if (A.heat >= 1) { A.lock = 2.1; A.heat = 0; burst(A, cx, cy, "#58a6ff", 24); }
+      } else {
+        A.br = Math.max(0, A.br - 600 * dt);
+        A.heat = Math.max(0, A.heat - 0.5 * dt);
+      }
+      A.spawn -= dt;
+      if (A.spawn <= 0) { spawnDebris(A); A.spawn = Math.max(0.28, 1.15 - A.score * 0.018) * rand(0.7, 1.3); }
+      for (const d of A.debris) {
+        d.x += d.vx * dt; d.y += d.vy * dt; d.rot += dt * 3;
+        const dist = Math.hypot(d.x - cx, d.y - cy);
+        if (!d.out && A.lock <= 0 && A.br > CORE && dist < A.br + d.r) {
+          const sp = Math.hypot(d.vx, d.vy) * 1.4 + 160, nx = (d.x - cx) / dist, ny = (d.y - cy) / dist;
+          d.vx = nx * sp; d.vy = ny * sp; d.out = true;
+          A.score++;
+          if (A.score % 25 === 0) A.lives = Math.min(5, A.lives + 1);
+          A.extra = A.lives; A.hud();
+          burst(A, d.x, d.y, "#79c0ff", 5);
+        } else if (!d.out && dist < CORE + d.r) {
+          d.dead = true;
+          burst(A, d.x, d.y, "#f85149", 8);
+          if (A.inv <= 0) {
+            A.lives--; A.inv = 1; A.flash = 0.2; A.extra = A.lives; A.hud();
+            if (A.lives <= 0) { A.die(); return; }
+          }
+        }
+        if (dist > 480) d.dead = true;
+      }
+      A.debris = A.debris.filter((d) => !d.dead);
+    },
+    draw(A) {
+      const ctx = A.ctx, W = A.W, H = A.H, cx = W / 2, cy = H / 2;
+      const g = ctx.createRadialGradient(cx, cy, 20, cx, cy, W * 0.7);
+      g.addColorStop(0, "#0b1a2e"); g.addColorStop(1, "#04070d");
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+      ctx.strokeStyle = "rgba(88,166,255,0.08)"; ctx.lineWidth = 1;
+      for (let r = 50; r < W; r += 50) { ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke(); }
+      A.debris.forEach((d) => {
+        ctx.save(); ctx.translate(d.x, d.y); ctx.rotate(d.rot);
+        ctx.fillStyle = d.out ? "#39c5cf" : d.r > 15 ? "#d29922" : "#f85149";
+        ctx.fillRect(-d.r, -d.r * 0.7, d.r * 2, d.r * 1.4);
+        ctx.restore();
+      });
+      A.parts.forEach((q) => { ctx.globalAlpha = q.t / 0.4; ctx.fillStyle = q.color; ctx.fillRect(q.x - 2, q.y - 2, 4, 4); });
+      ctx.globalAlpha = 1;
+      if (A.br > CORE) {
+        const hot = A.heat > 0.7;
+        ctx.fillStyle = hot ? "rgba(248,81,73,0.12)" : "rgba(88,166,255,0.14)";
+        ctx.strokeStyle = hot ? "#f85149" : "#79c0ff"; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(cx, cy, A.br, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      }
+      const blink = A.inv > 0 && Math.floor(A.inv * 12) % 2;
+      ctx.fillStyle = blink ? "#ffffff" : "#3fb950"; ctx.fillRect(cx - CORE, cy - CORE, CORE * 2, CORE * 2);
+      ctx.fillStyle = "#010409"; ctx.font = "bold 13px monospace"; ctx.textAlign = "center"; ctx.fillText(">", cx, cy + 5);
+      const bw = 160, bx = cx - bw / 2, by = H - 30;
+      ctx.fillStyle = "#161b22"; ctx.fillRect(bx, by, bw, 8);
+      ctx.fillStyle = A.lock > 0 ? "#8b949e" : A.heat > 0.7 ? "#f85149" : "#58a6ff";
+      ctx.fillRect(bx, by, bw * (A.lock > 0 ? A.lock / 2.1 : A.heat), 8);
+      ctx.fillStyle = "#8b949e"; ctx.font = "10px monospace";
+      ctx.fillText(A.lock > 0 ? "OVERHEATED — cooling down" : "shield heat", cx, by - 6);
+      for (let i = 0; i < A.lives; i++) { ctx.fillStyle = "#3fb950"; ctx.fillRect(12 + i * 16, 12, 10, 10); }
+      ctx.textAlign = "left";
+    }
+  });
+}
 
 /* ====================================================================
    MODULE C: IDLE SYSTEM AUTOMATION
