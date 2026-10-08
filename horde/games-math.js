@@ -177,10 +177,10 @@ const billDraw = (ctx, z) => {
 Horde.register({
   id: 'vacuum', cat: CAT, name: 'Coin Vacuum', icon: '💰',
   hook: 'High-score greed. Suck up loose cash bags in a bank vault while relentless agents close in. Every bag you grab fires a blast of coins back at them.',
-  how: 'Drag anywhere to move. Your vacuum cone pulls in <b>💰 cash bags</b> in front of you. Each bag fires a coin blast at the nearest agent.',
+  how: 'Drag anywhere to move. Your vacuum cone pulls in <b>💰 cash bags</b> in front of you. Each bag fires a big coin blast at the nearest agent. Spare change flicks out on its own.',
   bg: '#26332d', grid: 'rgba(255,215,0,0.07)', gridSize: 50, xpColor: '#81c784', killWord: 'agents audited',
   player: { r: 15, hp: 100, speed: 155, emoji: '🤑', size: 36 },
-  stats: { cone: 0.5, vac: 120, coins: 5, spread: 0.35, dmg: 14, pierce: 0, trail: 0, bagRate: 1, bagMax: 9 },
+  stats: { cone: 0.5, vac: 120, coins: 5, spread: 0.35, dmg: 14, pierce: 0, trail: 0, bagRate: 0.7, bagMax: 10 },
   enemies: [
     { id: 'agent', emoji: '🕵️', r: 13, hp: 20, speed: 56, dmg: 10, xp: 1, w: 9, color: '#455a64' },
     { id: 'auditor', emoji: '🤵', r: 13, hp: 18, speed: 74, dmg: 9, xp: 1, w: 5, from: 20, beh: 'zigzag', color: '#263238' },
@@ -200,9 +200,15 @@ Horde.register({
   update(G, dt) {
     const p = G.p, s = G.s;
     G.every('bag', s.bagRate, () => { if (G.bags.length < s.bagMax) G.bags.push(bagSpot(G)); });
+    // loose change: a weak baseline shot so you are never defenceless between bags
+    G.every('change', 1.2, () => {
+      const e = G.nearest(p.x, p.y, 300); if (!e) return;
+      const a = Math.atan2(e.y - p.y, e.x - p.x);
+      G.shoot({ x: p.x, y: p.y, vx: Math.cos(a) * 460, vy: Math.sin(a) * 460, r: 4, dmg: s.dmg * 0.8, pierce: s.pierce, kb: 60, life: 1, draw: coinDraw });
+    });
     for (let i = G.bags.length - 1; i >= 0; i--) {
       const b = G.bags[i], d = Math.hypot(b.x - p.x, b.y - p.y);
-      if (d < s.vac + p.r && Math.abs(angDiff(p.ang, Math.atan2(b.y - p.y, b.x - p.x))) < s.cone) {
+      if (d < 60 || (d < s.vac + p.r && Math.abs(angDiff(p.ang, Math.atan2(b.y - p.y, b.x - p.x))) < s.cone)) {
         b.x += (p.x - b.x) / d * 280 * dt; b.y += (p.y - b.y) / d * 280 * dt; b.suck = true;
       } else b.suck = false;
       if (d < p.r + 14) { G.bags.splice(i, 1); blast(G); G.addXp(0.5); G.sfx('pick'); }

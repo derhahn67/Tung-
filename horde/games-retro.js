@@ -34,11 +34,11 @@ const BRICK = {
 };
 function brickRow(G, y) {
   const cols = G.cols, bw = G.w / cols, bh = 24, t = G.time;
-  const maxv = 3 + Math.floor(t / 7), gap = Math.max(0.12, 0.35 - t / 900);
+  const maxv = 5 + Math.floor(t * 1.6 + Math.pow(t / 15, 2.5)), gap = Math.max(0.12, 0.35 - t / 900);
   for (let c = 0; c < cols; c++) {
     if (Math.random() < gap) continue;
     const hp = Math.max(1, Math.round(maxv * Math.pow(Math.random(), 0.7)));
-    G.enemies.push({ type: BRICK, x: (c + 0.5) * bw, y, bw, bh, r: Math.hypot(bw, bh) / 2, hp, maxHp: hp, xp: Math.ceil(hp / 2.5),
+    G.enemies.push({ type: BRICK, x: (c + 0.5) * bw, y, bw, bh, r: Math.hypot(bw, bh) / 2, hp, maxHp: hp, xp: Math.ceil(Math.pow(hp, 0.4)),
       kx: 0, ky: 0, flash: 0, slowF: 1, slowT: 0, bomb: Math.random() < 0.05 });
   }
 }
@@ -49,7 +49,7 @@ Horde.register({
   bg: '#0f1226', xpColor: '#ffeb3b', custom: true, move: 'paddle', autoMagnet: true, killWord: 'bricks smashed', overText: 'BRICKED!',
   player: { r: 10, hp: 100, speed: 0 },
   noGeneric: ['spd', 'mag'],
-  stats: { rate: 0.16, per: 1, dmg: 1, maxB: 7, laser: 0, boom: 0, spread: 0.32 },
+  stats: { rate: 0.16, per: 1, dmg: 1, maxB: 4, laser: 0, boom: 0, spread: 0.32 },
   enemies: [BRICK],
   upgrades: [
     { id: 'more', name: '+2 Balls per Stream', icon: '⚪', max: 4, desc: 'Each shot fires two more balls', apply: (G) => { G.s.per += 2; G.s.spread += 0.08; } },
@@ -58,29 +58,29 @@ Horde.register({
     { id: 'boom', name: 'Explosive Bricks', icon: '💥', max: 4, desc: 'Destroyed bricks damage their neighbours', apply: (G) => { G.s.boom++; } },
     { id: 'rapid', name: 'Rapid Stream', icon: '⏩', max: 5, desc: 'Fire 15% faster', apply: (G) => { G.s.rate *= 0.85; } },
     { id: 'heavy', name: 'Heavy Balls', icon: '🎱', max: 5, desc: 'Ball damage +1', apply: (G) => { G.s.dmg += 1; } },
-    { id: 'bouncy', name: 'Super Bouncy', icon: '🏀', max: 3, desc: 'Balls survive 3 more bounces', apply: (G) => { G.s.maxB += 3; } },
+    { id: 'bouncy', name: 'Super Bouncy', icon: '🏀', max: 3, desc: 'Balls survive 2 more bounces', apply: (G) => { G.s.maxB += 2; } },
   ],
   init(G) {
     G.p.hw = 46; G.balls = [];
     G.cols = clamp(Math.floor(G.w / 46), 6, 14);
-    // G.rowY is the y of the topmost row; a new row spawns above it once it has marched down one row height.
-    G.rowY = G.top + 40;
-    for (let i = 0; i < 5; i++) brickRow(G, G.rowY + i * 28);
+    for (let i = 0; i < 5; i++) brickRow(G, G.top + 40 + i * 28);
     G.p.y = G.bot - 64;
   },
   onResize(G) { G.p.y = G.bot - 64; },
   update(G, dt) {
     const p = G.p, s = G.s, t = G.time;
-    const march = 7 + t * 0.05;
+    // a new row drops in on a timer and shoves the whole wall down one row
+    const push = G.tm.push > 0 ? Math.min(G.tm.push, dt * 140) : 0;
+    G.tm.push = (G.tm.push || 0) - push;
+    G.every('row', Math.max(1.1, 3.2 - t / 70), () => { brickRow(G, G.top + 40 - 28); G.tm.push = (G.tm.push || 0) + 28; });
+    const march = 3 + t * 0.02;
     for (const e of G.enemies) {
       if (e.flash > 0) e.flash -= dt;
-      e.y += march * dt;
+      e.y += march * dt + push;
       if (!e.dead && e.y + e.bh / 2 >= p.y - 12) {
         e.dead = true; G.hurt(10, true); G.burst(e.x, e.y, '#f44336', 10, 150);
       }
     }
-    G.rowY += march * dt;
-    if (G.rowY >= G.top + 40 + 28) { G.rowY -= 28; brickRow(G, G.rowY); }
     G.every('fire', s.rate, () => {
       for (let i = 0; i < s.per && G.balls.length < 600; i++) {
         const a = -Math.PI / 2 + rand(-s.spread, s.spread);
@@ -121,7 +121,7 @@ Horde.register({
           if (ox < oy) { b.vx = b.x < hit.x ? -Math.abs(b.vx) : Math.abs(b.vx); b.x += b.x < hit.x ? -ox : ox; }
           else { b.vy = b.y < hit.y ? -Math.abs(b.vy) : Math.abs(b.vy); b.y += b.y < hit.y ? -oy : oy; }
           hit.flash = 0.05;
-          G.damage(hit, s.dmg * (1 + b.b * 0.5), 0, 0, true);
+          G.damage(hit, s.dmg * (1 + b.b * 0.25), 0, 0, true);
           G.sfx('hit');
           b.b++;
         }

@@ -179,7 +179,7 @@ Horde.register({
   player: { r: 12, hp: 120, speed: 175, emoji: '🐝', size: 30, faceLeft: true },
   hpAt: (G) => G.pot,
   genericNames: { vit: { name: 'Reinforce Pot', icon: '🍯', desc: '+20 max pot HP and repair 20' }, reg: { name: 'Royal Jelly', icon: '👑', desc: 'Pot repairs 0.6 HP per second' } },
-  stats: { rate: 0.32, dmg: 11, multi: 1, pierce: 0, workers: 0, honey: 0 },
+  stats: { rate: 0.26, dmg: 15, multi: 2, pierce: 0, workers: 0, honey: 0 },
   enemies: [
     { id: 'bear', emoji: '🐻', r: 15, hp: 30, speed: 44, dmg: 8, xp: 1, w: 9, color: '#795548' },
     { id: 'badger', emoji: '🦡', r: 12, hp: 18, speed: 74, dmg: 6, xp: 1, w: 5, from: 20, beh: 'zigzag', color: '#616161' },
