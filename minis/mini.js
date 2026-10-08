@@ -111,11 +111,11 @@ M.game = (G) => {
   document.body.insertAdjacentHTML('beforeend',
     '<canvas id="mcv"></canvas><div id="msafe"></div><div class="mtop"><button id="mpause" aria-label="Pause">❚❚</button></div>' +
     '<div class="mov" id="mstart"><div class="mpanel"><div class="big">' + G.icon + '</div><h1>' + G.title + '</h1><p>' + G.tagline + '</p><div class="how">' + G.how + '</div>' +
-    '<div class="mbest" id="mbest0"></div><button class="mbtn" id="mplay">▶ Play</button><a class="mbtn alt" href="../horde/index.html">← All games</a></div></div>' +
+    '<div class="mbest" id="mbest0"></div><button class="mbtn" id="mplay">▶ Play</button><a class="mbtn alt" href="../index.html">← All games</a></div></div>' +
     '<div class="mov" id="mpauseov"><div class="mpanel"><h2>PAUSED</h2><button class="mbtn" id="mresume">▶ Resume</button><button class="mbtn alt" id="mrestart">↻ Restart</button>' +
-    '<button class="mbtn alt" id="mmute"></button><a class="mbtn alt" href="../horde/index.html">← All games</a></div></div>' +
+    '<button class="mbtn alt" id="mmute"></button><a class="mbtn alt" href="../index.html">← All games</a></div></div>' +
     '<div class="mov" id="mover"><div class="mpanel"><h2 id="movt">GAME OVER</h2><p id="movsub"></p><div class="score" id="movscore"></div><div class="mbest" id="mbest1"></div>' +
-    '<button class="mbtn" id="mretry">↻ Play again</button><a class="mbtn alt" href="../horde/index.html">← All games</a></div></div>');
+    '<button class="mbtn" id="mretry">↻ Play again</button><a class="mbtn alt" href="../index.html">← All games</a></div></div>');
   const $ = (id) => document.getElementById(id);
   const cv = $('mcv'), ctx = cv.getContext('2d');
   const S = { W: 0, H: 0, top: 0, bot: 0, state: 'start', time: 0, ctx, cv };
