@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Bee Hive Hero</title>
+<script src="../cookies.js" defer></script>
+</head>
+<body>
+<script src="mini.js"></script>
+<script>
+(() => {
+  const C = 7, R = 8, TYPES = ['🌼', '🌸', '🌻', '🍯', '🍀', '🍓'], BG = ['#fff59d', '#f8bbd0', '#ffe082', '#ffcc80', '#c5e1a5', '#ef9a9a'];
+  const parts = Mini.particles();
+  let grid, sel, phase, phaseT, swapA, swapB, score, level, moves, target, combo, floats, geo, levelUpT;
+  const rnd = () => Mini.randInt(0, TYPES.length - 1);
+  const cell = (t, sp = null) => ({ t, sp, fall: 0, pop: 0 });
+  function makeGrid() {
+    do {
+      grid = [];
+      for (let r = 0; r < R; r++) { grid.push([]); for (let c = 0; c < C; c++) { let t; do { t = rnd(); } while ((c >= 2 && grid[r][c - 1].t === t && grid[r][c - 2].t === t) || (r >= 2 && grid[r - 1][c].t === t && grid[r - 2][c].t === t)); grid[r].push(cell(t)); } }
+    } while (!hasMove());
+    for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) grid[r][c].fall = R - r + 2;
+  }
+  function findRuns() {
+    const runs = [];
+    for (let r = 0; r < R; r++) { let s = 0; for (let c = 1; c <= C; c++) { if (c < C && grid[r][c] && grid[r][s] && grid[r][c].t === grid[r][s].t) continue; if (c - s >= 3) runs.push({ cells: [...Array(c - s)].map((_, i) => [r, s + i]), dir: 'row' }); s = c; } }
+    for (let c = 0; c < C; c++) { let s = 0; for (let r = 1; r <= R; r++) { if (r < R && grid[r][c] && grid[s][c] && grid[r][c].t === grid[s][c].t) continue; if (r - s >= 3) runs.push({ cells: [...Array(r - s)].map((_, i) => [s + i, c]), dir: 'col' }); s = r; } }
+    return runs;
+  }
+  function swap(a, b) { const t = grid[a[0]][a[1]]; grid[a[0]][a[1]] = grid[b[0]][b[1]]; grid[b[0]][b[1]] = t; }
+  function hasMove() {
+    for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) for (const [dr, dc] of [[0, 1], [1, 0]]) {
+      const r2 = r + dr, c2 = c + dc; if (r2 >= R || c2 >= C) continue;
+      if (grid[r][c].sp === 'bomb' || grid[r2][c2].sp === 'bomb') return true;
+      swap([r, c], [r2, c2]); const ok = findRuns().length > 0; swap([r, c], [r2, c2]); if (ok) return true;
+    }
+    return false;
+  }
+  function clearCells(set, S) {
+    // expand specials caught in the blast
+    let added = true;
+    while (added) {
+      added = false;
+      for (const k of [...set]) {
+        const [r, c] = k.split(',').map(Number), t = grid[r][c]; if (!t || !t.sp || t.used) continue;
+        t.used = true;
+        const more = t.sp === 'row' ? [...Array(C)].map((_, i) => [r, i]) : t.sp === 'col' ? [...Array(R)].map((_, i) => [i, c]) : [];
+        for (const [rr, cc] of more) { const kk = rr + ',' + cc; if (!set.has(kk)) { set.add(kk); added = true; } }
+        if (t.sp !== 'bomb') { parts.burst(geo.x + (c + 0.5) * geo.s, geo.y + (r + 0.5) * geo.s, '#ffeb3b', 16, 260, 5, 0); Mini.sfx('boom'); }
+      }
+    }
+    let n = 0;
+    for (const k of set) { const [r, c] = k.split(',').map(Number); const t = grid[r][c]; if (!t) continue; parts.burst(geo.x + (c + 0.5) * geo.s, geo.y + (r + 0.5) * geo.s, BG[t.t], 6, 120, 4); grid[r][c] = null; n++; }
+    return n;
+  }
+  function resolve(S, swapped) {
+    const runs = findRuns();
+    if (!runs.length) return false;
+    combo++;
+    const set = new Set(), keep = [];
+    for (const run of runs) {
+      run.cells.forEach(([r, c]) => set.add(r + ',' + c));
+      if (run.cells.length >= 4) {
+        const at = (swapped && run.cells.find(([r, c]) => swapped.some(([a, b]) => a === r && b === c))) || run.cells[Math.floor(run.cells.length / 2)];
+        keep.push({ at, t: grid[run.cells[0][0]][run.cells[0][1]].t, sp: run.cells.length >= 5 ? 'bomb' : run.dir === 'row' ? 'col' : 'row' });
+      }
+    }
+    const n = clearCells(set, S);
+    for (const k of keep) { const [r, c] = k.at; grid[r][c] = cell(k.sp === 'bomb' ? -1 : k.t, k.sp); }
+    const pts = n * 20 * combo;
+    score += pts; floats.push({ s: '+' + pts + (combo > 1 ? ' ×' + combo : ''), t: 0.9, x: S.W / 2, y: geo.y - 10 });
+    Mini.sfx(combo > 2 ? 'win' : 'pop');
+    return true;
+  }
+  function gravity() {
+    for (let c = 0; c < C; c++) {
+      let w = R - 1;
+      for (let r = R - 1; r >= 0; r--) if (grid[r][c]) { const t = grid[r][c]; grid[r][c] = null; t.fall += w - r; grid[w][c] = t; w--; }
+      for (let r = w; r >= 0; r--) { const t = cell(rnd()); t.fall = w + 1 + 1; grid[r][c] = t; }
+    }
+  }
+  function bombSwap(a, b, S) {
+    const A = grid[a[0]][a[1]], B = grid[b[0]][b[1]];
+    const bomb = A.sp === 'bomb' ? A : B, other = bomb === A ? B : A, bpos = bomb === A ? a : b;
+    const set = new Set([bpos.join(',')]);
+    for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) if (grid[r][c] && (grid[r][c].t === other.t || other.sp === 'bomb')) set.add(r + ',' + c);
+    bomb.used = true; combo = 1;
+    const n = clearCells(set, S); score += n * 30; floats.push({ s: 'HONEY BOMB! +' + n * 30, t: 1.2, x: S.W / 2, y: geo.y - 10 });
+    parts.burst(geo.x + (bpos[1] + 0.5) * geo.s, geo.y + (bpos[0] + 0.5) * geo.s, '#ffb300', 40, 320, 6, 0); Mini.sfx('boom');
+  }
+  function trySwap(a, b, S) {
+    if (phase !== 'idle') return;
+    if (b[0] < 0 || b[1] < 0 || b[0] >= R || b[1] >= C) return;
+    swapA = a; swapB = b; phase = 'swap'; phaseT = 0; sel = null; Mini.sfx('tap');
+  }
+  function layout(S) { const s = Math.floor(Math.min((S.W - 16) / C, (S.bot - S.top - 150) / R, 70)); geo = { s, x: (S.W - s * C) / 2, y: S.top + 110 + Math.max(0, (S.bot - S.top - 150 - s * R) / 2) }; }
+  function startLevel(n) { moves = 22; target = 1800 + n * 1400; levelUpT = 0; }
+  const cellAt = (x, y) => { const c = Math.floor((x - geo.x) / geo.s), r = Math.floor((y - geo.y) / geo.s); return r >= 0 && c >= 0 && r < R && c < C ? [r, c] : null; };
+  Mini.game({
+    id: 'bee', title: 'Bee Hive Hero', icon: '🐝',
+    tagline: 'Help the bees fill the hive! Swap flowers and honey to make matches and reach the target score before you run out of moves.',
+    how: '👆 Swipe a tile into its neighbour (or tap two tiles) to swap them.<br>🐝 Match 4 = striped bee that clears a whole line.<br>💣 Match 5 = honey bomb: swap it to clear every tile of that kind!',
+    init(S) { layout(S); score = 0; level = 0; combo = 0; floats = []; sel = null; phase = 'idle'; parts.clear(); makeGrid(); startLevel(0); },
+    resize(S) { if (grid) layout(S); },
+    swipe(dir, S) { const a = cellAt(S.pointer.sx, S.pointer.sy); if (!a) return; const d = { up: [-1, 0], down: [1, 0], left: [0, -1], right: [0, 1] }[dir]; trySwap(a, [a[0] + d[0], a[1] + d[1]], S); },
+    tap(x, y, S) {
+      const a = cellAt(x, y); if (!a || phase !== 'idle') return;
+      if (sel && Math.abs(sel[0] - a[0]) + Math.abs(sel[1] - a[1]) === 1) trySwap(sel, a, S);
+      else { sel = sel && sel[0] === a[0] && sel[1] === a[1] ? null : a; Mini.sfx('tap'); }
+    },
+    update(dt, S) {
+      parts.update(dt);
+      floats.forEach((f) => { f.t -= dt; f.y -= 30 * dt; }); floats = floats.filter((f) => f.t > 0);
+      let falling = false;
+      for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) { const t = grid[r][c]; if (t && t.fall > 0) { t.fall = Math.max(0, t.fall - dt * 14); falling = true; } }
+      phaseT += dt;
+      if (phase === 'swap' && phaseT > 0.16) {
+        swap(swapA, swapB);
+        const A = grid[swapA[0]][swapA[1]], B = grid[swapB[0]][swapB[1]];
+        combo = 0;
+        if (A.sp === 'bomb' || B.sp === 'bomb') { bombSwap(swapA, swapB, S); moves--; phase = 'fall'; gravity(); phaseT = 0; }
+        else if (resolve(S, [swapA, swapB])) { moves--; phase = 'fall'; gravity(); phaseT = 0; }
+        else { phase = 'unswap'; phaseT = 0; Mini.sfx('hit'); }
+      } else if (phase === 'unswap' && phaseT > 0.16) { swap(swapA, swapB); phase = 'idle'; }
+      else if (phase === 'fall' && !falling && phaseT > 0.12) {
+        if (resolve(S)) { gravity(); phaseT = 0; }
+        else {
+          phase = 'idle';
+          if (score >= target) { level++; levelUpT = 2; floats.push({ s: 'LEVEL ' + (level + 1) + '!', t: 2, x: S.W / 2, y: S.H / 2 }); Mini.sfx('win'); startLevel(level); }
+          else if (moves <= 0) { S.over(score, 'OUT OF MOVES', 'Reached level ' + (level + 1)); return; }
+          if (!hasMove()) { makeGrid(); floats.push({ s: 'Shuffle!', t: 1.2, x: S.W / 2, y: S.H / 2 }); }
+        }
+      }
+    },
+    draw(ctx, S) {
+      const g = ctx.createLinearGradient(0, 0, 0, S.H); g.addColorStop(0, '#ffb300'); g.addColorStop(1, '#ff8f00');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, S.W, S.H);
+      // honeycomb backdrop
+      ctx.strokeStyle = 'rgba(255,255,255,.18)'; ctx.lineWidth = 2;
+      for (let y = 0; y < S.H + 40; y += 34) for (let x = (Math.floor(y / 34) % 2) * 20; x < S.W + 40; x += 40) { ctx.beginPath(); for (let i = 0; i <= 6; i++) { const a = i / 6 * Mini.TAU + Math.PI / 6; ctx.lineTo(x + Math.cos(a) * 20, y + Math.sin(a) * 20); } ctx.stroke(); }
+      if (!grid) return;
+      const s = geo.s;
+      ctx.fillStyle = 'rgba(93,64,55,.5)'; Mini.rrect(ctx, geo.x - 6, geo.y - 6, s * C + 12, s * R + 12, 14); ctx.fill();
+      ctx.save(); ctx.beginPath(); ctx.rect(geo.x - 6, geo.y - 6, s * C + 12, s * R + 12); ctx.clip();
+      const k = Math.min(1, phaseT / 0.16);
+      for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) {
+        const t = grid[r][c]; if (!t) continue;
+        let x = geo.x + c * s, y = geo.y + (r - t.fall) * s;
+        if ((phase === 'swap' || phase === 'unswap') && swapA) {
+          const isA = r === swapA[0] && c === swapA[1], isB = r === swapB[0] && c === swapB[1];
+          const m = phase === 'swap' ? k : 1 - k;
+          if (isA) { x += (swapB[1] - swapA[1]) * s * m; y += (swapB[0] - swapA[0]) * s * m; }
+          if (isB) { x += (swapA[1] - swapB[1]) * s * m; y += (swapA[0] - swapB[0]) * s * m; }
+        }
+        const isSel = sel && sel[0] === r && sel[1] === c;
+        ctx.fillStyle = t.sp === 'bomb' ? '#5d4037' : BG[t.t]; Mini.rrect(ctx, x + 3, y + 3, s - 6, s - 6, s * 0.22); ctx.fill();
+        if (isSel) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.stroke(); }
+        if (t.sp === 'bomb') Mini.emoji(ctx, '🍯', x + s / 2, y + s / 2, s * 0.62, Math.sin(S.time * 5) * 0.2);
+        else {
+          Mini.emoji(ctx, TYPES[t.t], x + s / 2, y + s / 2, s * 0.6 * (isSel ? 1.1 : 1));
+          if (t.sp) { ctx.strokeStyle = 'rgba(0,0,0,.45)'; ctx.lineWidth = 3; ctx.beginPath(); for (let i = -1; i <= 1; i++) { if (t.sp === 'row') { ctx.moveTo(x + 8, y + s / 2 + i * 7); ctx.lineTo(x + s - 8, y + s / 2 + i * 7); } else { ctx.moveTo(x + s / 2 + i * 7, y + 8); ctx.lineTo(x + s / 2 + i * 7, y + s - 8); } } ctx.stroke(); Mini.emoji(ctx, '🐝', x + s * 0.78, y + s * 0.22, s * 0.32); }
+        }
+      }
+      ctx.restore();
+      parts.draw(ctx);
+      const top = S.top + 12;
+      Mini.text(ctx, String(score), S.W / 2, top + 20, 28, '#fff', 'center', 'rgba(120,60,0,.6)');
+      Mini.text(ctx, 'Moves ' + moves, 14, top + 20, 17, '#fff', 'left', 'rgba(120,60,0,.6)');
+      Mini.text(ctx, 'Lv ' + (level + 1), S.W - 60, top + 20, 17, '#fff', 'right', 'rgba(120,60,0,.6)');
+      const bw = Math.min(S.W - 40, 360), bx = (S.W - bw) / 2, prev = level ? 1800 + (level - 1) * 1400 : 0, k2 = Mini.clamp((score - prev) / (target - prev), 0, 1);
+      ctx.fillStyle = 'rgba(0,0,0,.25)'; Mini.rrect(ctx, bx, top + 46, bw, 14, 7); ctx.fill();
+      ctx.fillStyle = '#fff59d'; Mini.rrect(ctx, bx, top + 46, Math.max(14, bw * k2), 14, 7); ctx.fill();
+      Mini.text(ctx, 'Target ' + target, S.W / 2, top + 76, 13, '#fff', 'center', 'rgba(120,60,0,.6)');
+      for (const f of floats) { ctx.globalAlpha = Math.min(1, f.t * 2); Mini.text(ctx, f.s, f.x, f.y, f.s.startsWith('LEVEL') ? 34 : 22, '#fff', 'center', 'rgba(120,60,0,.7)'); }
+      ctx.globalAlpha = 1;
+    },
+  });
+})();
+</script>
+</body>
+</html>

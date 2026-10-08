@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Snake Survivor</title>
+<script src="../cookies.js" defer></script>
+</head>
+<body>
+<script src="mini.js"></script>
+<script>
+(() => {
+  const WORLD = 2400, SP = 7, NAMES = ['Noodle', 'Sir Hiss', 'Zigzag', 'Slinky', 'Kaa', 'Wiggles', 'Monty', 'Viper', 'Danger Noodle'];
+  const HUES = [0, 30, 50, 120, 180, 210, 260, 300, 330];
+  let snakes, me, food, cam, boostBtn, steerAng, boosting, kills;
+  function mkSnake(name, hue, ai) {
+    const x = Mini.rand(300, WORLD - 300), y = Mini.rand(300, WORLD - 300), a = Mini.rand(0, Mini.TAU);
+    const s = { name, hue, ai, ang: a, len: ai ? Mini.randInt(15, 45) : 12, pts: [], dead: false, wander: 0, boost: false };
+    for (let i = 0; i < 80; i++) s.pts.push({ x: x - Math.cos(a) * i * SP, y: y - Math.sin(a) * i * SP });
+    return s;
+  }
+  const radius = (s) => 7 + Math.min(10, Math.sqrt(s.len) * 0.9);
+  function addFood(x, y, v = 1, c) { food.push({ x: x == null ? Mini.rand(20, WORLD - 20) : x, y: y == null ? Mini.rand(20, WORLD - 20) : y, v, c: c == null ? Mini.randInt(0, 359) : c, ph: Math.random() * 6 }); }
+  function kill(s, S) {
+    s.dead = true;
+    const n = Math.min(s.pts.length, Math.ceil(s.len));
+    for (let i = 0; i < n; i += 2) addFood(s.pts[i].x + Mini.rand(-6, 6), s.pts[i].y + Mini.rand(-6, 6), 2, s.hue);
+    if (s === me) { Mini.sfx('lose'); S.over(Math.floor(me.len), 'SNAKE DOWN!', 'Length ' + Math.floor(me.len) + ' · ' + kills + ' snakes eaten'); }
+  }
+  function steerAI(s, dt) {
+    const h = s.pts[0];
+    // look ahead for danger
+    const ahead = { x: h.x + Math.cos(s.ang) * 60, y: h.y + Math.sin(s.ang) * 60 };
+    let danger = ahead.x < 60 || ahead.y < 60 || ahead.x > WORLD - 60 || ahead.y > WORLD - 60;
+    if (!danger) for (const o of snakes) { if (o === s || o.dead) continue; for (let i = 0; i < o.pts.length && i < o.len; i += 3) { const p = o.pts[i]; if (Math.abs(p.x - ahead.x) < 30 && Math.abs(p.y - ahead.y) < 30) { danger = true; break; } } if (danger) break; }
+    let target;
+    if (danger) target = s.ang + (s.wander > 0.5 ? 1.6 : -1.6);
+    else {
+      let best = null, bd = 260 * 260;
+      for (const f of food) { const d = (f.x - h.x) ** 2 + (f.y - h.y) ** 2; if (d < bd) { bd = d; best = f; } }
+      if (best) target = Math.atan2(best.y - h.y, best.x - h.x);
+      else { s.wander += (Math.random() - 0.5) * dt * 3; target = s.ang + s.wander * 0.3; }
+    }
+    s.wander = Mini.clamp(s.wander + (Math.random() - 0.5) * dt * 2, 0, 1);
+    s.ang += Mini.clamp(((target - s.ang + Math.PI * 3) % Mini.TAU) - Math.PI, -3.4 * dt, 3.4 * dt);
+    s.boost = !danger && s.len > 30 && Math.random() < 0.004 ? true : s.boost && Math.random() > 0.02;
+  }
+  function moveSnake(s, dt) {
+    const speed = (s.boost && s.len > 12 ? 300 : 165);
+    const h = s.pts[0];
+    const nx = h.x + Math.cos(s.ang) * speed * dt, ny = h.y + Math.sin(s.ang) * speed * dt;
+    s.pts.unshift({ x: nx, y: ny });
+    // resample the head's path into evenly spaced points so the body follows it exactly
+    const need = Math.ceil(s.len) + 2, out = [s.pts[0]];
+    let prev = s.pts[0], carry = 0;
+    for (let i = 1; i < s.pts.length && out.length < need; i++) {
+      let a = prev; const b = s.pts[i]; let d = Math.hypot(b.x - a.x, b.y - a.y);
+      while (d > 0 && carry + d >= SP && out.length < need) {
+        const t = (SP - carry) / d, p = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+        out.push(p); a = p; d = Math.hypot(b.x - a.x, b.y - a.y); carry = 0;
+      }
+      carry += d; prev = b;
+    }
+    while (out.length < need) out.push({ x: out[out.length - 1].x, y: out[out.length - 1].y });
+    s.pts = out;
+    if (s.boost && s.len > 12) { s.len -= dt * 3; if (Math.random() < dt * 6) { const t = s.pts[s.pts.length - 1]; addFood(t.x, t.y, 1, s.hue); } }
+  }
+  Mini.game({
+    id: 'snake', title: 'Snake Survivor', icon: '🐍',
+    tagline: 'A slithering battle royale. Eat glowing food to grow, trap other snakes, and become the longest noodle in the pit!',
+    how: '👆 Hold and drag anywhere to steer toward your finger (or ←/→).<br>⚡ Hold the boost button (or Space) to speed up. It costs length!<br>💥 Hit another snake\'s body and you\'re out. Make them hit yours!',
+    init(S) {
+      snakes = []; food = []; kills = 0; boosting = false;
+      me = mkSnake('You', 140, false); me.pts.forEach((p, i) => { p.x = WORLD / 2 - i * SP; p.y = WORLD / 2; }); me.ang = 0;
+      snakes.push(me);
+      for (let i = 0; i < 9; i++) snakes.push(mkSnake(NAMES[i], HUES[i], true));
+      for (let i = 0; i < 420; i++) addFood();
+      cam = { x: WORLD / 2, y: WORLD / 2 }; steerAng = null;
+    },
+    down(x, y, S) { const b = boostBtn; if (b && Math.hypot(x - b.x, y - b.y) < b.r + 10) { boosting = true; return; } steerAng = Math.atan2(y - S.H / 2, x - S.W / 2); },
+    move(x, y, S) { if (!boosting) steerAng = Math.atan2(y - S.H / 2, x - S.W / 2); },
+    up() { boosting = false; },
+    update(dt, S) {
+      if (S.keys.has('ArrowLeft') || S.keys.has('KeyA')) me.ang -= 3.6 * dt;
+      if (S.keys.has('ArrowRight') || S.keys.has('KeyD')) me.ang += 3.6 * dt;
+      if (steerAng != null && S.pointer.down && !boosting) me.ang += Mini.clamp(((steerAng - me.ang + Math.PI * 3) % Mini.TAU) - Math.PI, -4.2 * dt, 4.2 * dt);
+      me.boost = boosting || S.keys.has('Space');
+      for (const s of snakes) if (!s.dead) { if (s.ai) steerAI(s, dt); moveSnake(s, dt); }
+      // eating
+      for (const s of snakes) {
+        if (s.dead) continue;
+        const h = s.pts[0], r = radius(s) + 8;
+        for (const f of food) if (!f.eaten && Math.abs(f.x - h.x) < r && Math.abs(f.y - h.y) < r) { f.eaten = true; s.len += f.v * 0.5; if (s === me) Mini.sfx('pop'); }
+      }
+      food = food.filter((f) => !f.eaten);
+      while (food.length < 380) addFood();
+      // collisions: head against walls and other bodies
+      for (const s of snakes) {
+        if (s.dead) continue;
+        const h = s.pts[0], r = radius(s);
+        if (h.x < r || h.y < r || h.x > WORLD - r || h.y > WORLD - r) { kill(s, S); continue; }
+        for (const o of snakes) {
+          if (o === s || o.dead) continue;
+          const orr = radius(o);
+          let hit = false;
+          for (let i = 1; i < o.pts.length; i += 1) { const p = o.pts[i]; if ((p.x - h.x) ** 2 + (p.y - h.y) ** 2 < (orr + r * 0.6) ** 2) { hit = true; break; } }
+          if (hit) { if (o === me) { kills++; Mini.sfx('win'); } kill(s, S); break; }
+        }
+        if (s === me && me.dead) return;
+      }
+      // respawn AI snakes
+      for (let i = 0; i < snakes.length; i++) if (snakes[i].dead && snakes[i].ai) snakes[i] = mkSnake(NAMES[(i + kills) % NAMES.length], HUES[i % HUES.length], true);
+      cam.x += (me.pts[0].x - cam.x) * Math.min(1, dt * 8); cam.y += (me.pts[0].y - cam.y) * Math.min(1, dt * 8);
+    },
+    draw(ctx, S) {
+      ctx.fillStyle = '#10141f'; ctx.fillRect(0, 0, S.W, S.H);
+      if (!me) return;
+      const zoom = Mini.clamp(1.15 - me.len / 600, 0.65, 1.1);
+      ctx.save(); ctx.translate(S.W / 2, S.H / 2); ctx.scale(zoom, zoom); ctx.translate(-cam.x, -cam.y);
+      const vx0 = cam.x - S.W / 2 / zoom - 40, vx1 = cam.x + S.W / 2 / zoom + 40, vy0 = cam.y - S.H / 2 / zoom - 40, vy1 = cam.y + S.H / 2 / zoom + 40;
+      ctx.strokeStyle = 'rgba(80,110,160,.18)'; ctx.lineWidth = 1;
+      for (let x = Math.floor(vx0 / 60) * 60; x < vx1; x += 60) { ctx.beginPath(); ctx.moveTo(x, vy0); ctx.lineTo(x, vy1); ctx.stroke(); }
+      for (let y = Math.floor(vy0 / 60) * 60; y < vy1; y += 60) { ctx.beginPath(); ctx.moveTo(vx0, y); ctx.lineTo(vx1, y); ctx.stroke(); }
+      ctx.strokeStyle = '#ff5252'; ctx.lineWidth = 8; ctx.strokeRect(0, 0, WORLD, WORLD);
+      for (const f of food) {
+        if (f.x < vx0 || f.x > vx1 || f.y < vy0 || f.y > vy1) continue;
+        const r = (f.v > 1 ? 6 : 4) + Math.sin(S.time * 4 + f.ph);
+        ctx.fillStyle = 'hsla(' + f.c + ',90%,60%,.25)'; ctx.beginPath(); ctx.arc(f.x, f.y, r * 2, 0, Mini.TAU); ctx.fill();
+        ctx.fillStyle = 'hsl(' + f.c + ',90%,65%)'; ctx.beginPath(); ctx.arc(f.x, f.y, r, 0, Mini.TAU); ctx.fill();
+      }
+      for (const s of snakes) {
+        if (s.dead) continue;
+        const r = radius(s);
+        for (let i = s.pts.length - 1; i >= 0; i--) {
+          const p = s.pts[i];
+          if (p.x < vx0 || p.x > vx1 || p.y < vy0 || p.y > vy1) continue;
+          ctx.fillStyle = 'hsl(' + s.hue + ',75%,' + (i % 6 < 3 ? 55 : 45) + '%)';
+          ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Mini.TAU); ctx.fill();
+        }
+        const h = s.pts[0];
+        for (const side of [-1, 1]) {
+          const ex = h.x + Math.cos(s.ang + side * 0.6) * r * 0.55, ey = h.y + Math.sin(s.ang + side * 0.6) * r * 0.55;
+          ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(ex, ey, r * 0.38, 0, Mini.TAU); ctx.fill();
+          ctx.fillStyle = '#000'; ctx.beginPath(); ctx.arc(ex + Math.cos(s.ang) * r * 0.15, ey + Math.sin(s.ang) * r * 0.15, r * 0.18, 0, Mini.TAU); ctx.fill();
+        }
+        if (s !== me) Mini.text(ctx, s.name, h.x, h.y - r - 12, 12, 'rgba(255,255,255,.7)', 'center', null);
+      }
+      ctx.restore();
+      // HUD + leaderboard + boost button
+      const top = S.top + 12;
+      Mini.text(ctx, 'Length ' + Math.floor(me.len), 14, top + 16, 20, '#fff', 'left');
+      Mini.text(ctx, '💀 ' + kills, 14, top + 44, 16, '#fff', 'left');
+      const board = snakes.filter((s) => !s.dead).sort((a, b) => b.len - a.len).slice(0, 5);
+      board.forEach((s, i) => Mini.text(ctx, (i + 1) + '. ' + s.name + ' ' + Math.floor(s.len), S.W - 14, top + 54 + i * 18, 13, s === me ? '#69f0ae' : 'rgba(255,255,255,.8)', 'right', null));
+      boostBtn = { x: S.W - 56, y: S.bot - 70, r: 38 };
+      ctx.fillStyle = me.boost ? 'rgba(255,214,0,.85)' : 'rgba(255,255,255,.18)'; ctx.beginPath(); ctx.arc(boostBtn.x, boostBtn.y, boostBtn.r, 0, Mini.TAU); ctx.fill();
+      Mini.text(ctx, '⚡', boostBtn.x, boostBtn.y, 30, '#fff', 'center', null);
+      // minimap
+      const mm = 70, mx = 14, my = S.bot - mm - 14;
+      ctx.fillStyle = 'rgba(0,0,0,.4)'; ctx.fillRect(mx, my, mm, mm); ctx.strokeStyle = 'rgba(255,255,255,.3)'; ctx.strokeRect(mx, my, mm, mm);
+      for (const s of snakes) if (!s.dead) { ctx.fillStyle = s === me ? '#69f0ae' : 'hsl(' + s.hue + ',70%,60%)'; ctx.fillRect(mx + s.pts[0].x / WORLD * mm - 2, my + s.pts[0].y / WORLD * mm - 2, s === me ? 5 : 3, s === me ? 5 : 3); }
+    },
+  });
+})();
+</script>
+</body>
+</html>
