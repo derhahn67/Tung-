@@ -167,6 +167,8 @@ canvas { display: block; max-width: 100%; }
     <button class="nav" data-view="swing"><span class="ic">&#9678;</span><span class="lbl">Hook Swing</span></button>
     <button class="nav" data-view="worm"><span class="ic">&#8779;</span><span class="lbl">Log Trail</span></button>
     <button class="nav" data-view="pulse"><span class="ic">&#9673;</span><span class="lbl">Shield Pulse</span></button>
+    <h4>Sandbox</h4>
+    <button class="nav" data-href="horde/index.html"><span class="ic">&#9733;</span><span class="lbl">Horde Arcade</span></button>
     <h4>Operations</h4>
     <button class="nav" data-view="idle"><span class="ic">&#9881;</span><span class="lbl">Task Automation</span></button>
   </nav>
@@ -474,7 +476,7 @@ function showView(name) {
   if (ARCADES[name]) ARCADES[name].show();
 }
 
-document.querySelectorAll(".nav").forEach((b) => b.addEventListener("click", () => showView(b.dataset.view)));
+document.querySelectorAll(".nav").forEach((b) => b.addEventListener("click", () => { if (b.dataset.href) location.href = b.dataset.href; else showView(b.dataset.view); }));
 
 // Boss key: Escape always returns to the overview dashboard and pauses games.
 document.addEventListener("keydown", (e) => {
