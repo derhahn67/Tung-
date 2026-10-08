@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Shopping Cart Chaos</title>
+<script src="../cookies.js" defer></script>
+</head>
+<body>
+<script src="mini.js"></script>
+<script>
+(() => {
+  const ITEMS = ['🍎', '🥖', '🧀', '🍌', '🥛', '🍪', '🥕', '🍩'];
+  const TALL = ['🧔', '👵', '👨', '👩', '👮'], LOW = ['📦', '🧺'];
+  const parts = Mini.particles();
+  let lane, x, jumpT, objs, speed, dist, items, shield, magnetT, rowAcc, dead, laneW, py, shake, floats;
+  const lx = (S, i) => S.W / 2 + (i - 1) * laneW;
+  function setup(S) { laneW = Math.min(S.W / 3.2, 130); py = S.bot - 130; }
+  function spawnRow(S) {
+    const kinds = [];
+    const blocked = Mini.randInt(1, 2), lanes = [0, 1, 2].sort(() => Math.random() - 0.5);
+    for (let i = 0; i < blocked; i++) {
+      const L = lanes[i], r = Math.random();
+      if (r < 0.25) objs.push({ k: 'low', e: Mini.pick(LOW), lane: L, y: -60 });
+      else if (r < 0.37 && dist > 1500) objs.push({ k: 'cart', e: '🛒', lane: L, y: -60, v: 140 });
+      else if (r < 0.47) objs.push({ k: 'spill', lane: L, y: -60 });
+      else objs.push({ k: 'tall', e: Mini.pick(TALL), lane: L, y: -60 });
+      kinds.push(L);
+    }
+    const free = lanes.slice(blocked);
+    if (free.length && Math.random() < 0.75) {
+      const L = Mini.pick(free), n = Mini.randInt(3, 5);
+      for (let i = 0; i < n; i++) objs.push({ k: 'item', e: Mini.pick(ITEMS), lane: L, y: -60 - 140 - i * 50 });
+    }
+    if (Math.random() < 0.07) objs.push({ k: 'power', e: Math.random() < 0.5 ? '🎟️' : '🧲', lane: Mini.pick(free.length ? free : [0, 1, 2]), y: -260 });
+  }
+  function crash(S, o) {
+    if (shield) { shield = false; o.hit = true; parts.burst(lx(S, o.lane), o.y, '#80deea', 16, 220); Mini.sfx('pop'); floats.push({ x: x, y: py - 40, t: 1, s: 'Coupon used!' }); return; }
+    dead = true; shake = 12; Mini.sfx('hit'); parts.burst(x, py, '#ffcc80', 30, 300, 6);
+    S.over(Math.floor(dist / 10) + items * 10, 'CRASH IN AISLE 3!', items + ' groceries · ' + Math.floor(dist / 10) + ' m');
+  }
+  Mini.game({
+    id: 'cart', title: 'Shopping Cart Chaos', icon: '🛒',
+    tagline: 'Sprint through the supermarket! Dodge angry shoppers, leap over boxes and grab every grocery.',
+    how: '👈👉 Swipe or tap left/right to switch aisles.<br>👆 Swipe up (or Space) to <b>jump</b> over boxes and spills.<br>🎟️ Coupon = shield · 🧲 = grocery magnet.',
+    init(S) {
+      setup(S); lane = 1; x = lx(S, 1); jumpT = 0; objs = []; speed = 270; dist = 0; items = 0; shield = false; magnetT = 0; rowAcc = 0; dead = false; shake = 0; floats = []; parts.clear();
+    },
+    resize(S) { if (laneW) setup(S); },
+    swipe(dir) { if (dead) return; if (dir === 'left') lane = Math.max(0, lane - 1); else if (dir === 'right') lane = Math.min(2, lane + 1); else if (dir === 'up' && jumpT <= 0) { jumpT = 0.65; Mini.sfx('jump'); } if (dir !== 'down') Mini.sfx('tap'); },
+    tap(px, py2, S) { if (dead) return; if (px < S.W / 3) lane = Math.max(0, lane - 1); else if (px > S.W * 2 / 3) lane = Math.min(2, lane + 1); else if (jumpT <= 0) { jumpT = 0.65; Mini.sfx('jump'); } },
+    key(code) {
+      if (dead) return;
+      if (code === 'ArrowLeft' || code === 'KeyA') lane = Math.max(0, lane - 1);
+      if (code === 'ArrowRight' || code === 'KeyD') lane = Math.min(2, lane + 1);
+      if ((code === 'ArrowUp' || code === 'KeyW' || code === 'Space') && jumpT <= 0) { jumpT = 0.65; Mini.sfx('jump'); }
+    },
+    update(dt, S) {
+      parts.update(dt); shake = Math.max(0, shake - dt * 30);
+      floats.forEach((f) => { f.t -= dt; f.y -= 40 * dt; }); floats = floats.filter((f) => f.t > 0);
+      if (dead) return;
+      speed = Math.min(680, speed + dt * 7);
+      dist += speed * dt;
+      x += (lx(S, lane) - x) * Math.min(1, dt * 16);
+      jumpT = Math.max(0, jumpT - dt);
+      magnetT = Math.max(0, magnetT - dt);
+      rowAcc += speed * dt;
+      const gap = Math.max(230, 420 - dist / 60);
+      if (rowAcc >= gap) { rowAcc -= gap; spawnRow(S); }
+      const air = jumpT > 0.08 && jumpT < 0.57;
+      for (const o of objs) {
+        o.y += (speed + (o.v || 0)) * dt;
+        if (o.hit) continue;
+        const ox = lx(S, o.lane), sameLane = Math.abs(ox - x) < laneW * 0.45;
+        if (o.k === 'item' || o.k === 'power') {
+          if (magnetT > 0 && o.k === 'item' && o.y > py - 260 && o.y < py + 20) { o.lane = lane; }
+          if (sameLane && Math.abs(o.y - py) < 34) {
+            o.hit = true;
+            if (o.k === 'item') { items++; Mini.sfx('coin'); parts.burst(ox, o.y, '#fff176', 6, 120, 3); }
+            else if (o.e === '🎟️') { shield = true; Mini.sfx('win'); floats.push({ x, y: py - 40, t: 1.2, s: 'Shield!' }); }
+            else { magnetT = 7; Mini.sfx('win'); floats.push({ x, y: py - 40, t: 1.2, s: 'Magnet!' }); }
+          }
+          continue;
+        }
+        const hitRange = o.k === 'spill' ? 26 : 38;
+        if (sameLane && Math.abs(o.y - py) < hitRange) {
+          if ((o.k === 'low' || o.k === 'spill') && air) continue;
+          if (o.k === 'spill') { o.hit = true; speed = Math.max(250, speed * 0.75); Mini.sfx('swoosh'); floats.push({ x, y: py - 40, t: 1, s: 'Slippery!' }); continue; }
+          crash(S, o);
+          if (dead) return;
+        }
+      }
+      objs = objs.filter((o) => o.y < S.H + 80 && !(o.hit && o.k !== 'spill' && o.k !== 'tall' && o.k !== 'low' && o.k !== 'cart'));
+    },
+    draw(ctx, S) {
+      ctx.save();
+      if (shake) ctx.translate(Mini.rand(-shake, shake), Mini.rand(-shake, shake));
+      ctx.fillStyle = '#efe9dc'; ctx.fillRect(0, 0, S.W, S.H);
+      const off = (dist || 0) % 60;
+      ctx.strokeStyle = 'rgba(150,135,110,0.28)'; ctx.lineWidth = 1;
+      for (let y = -60 + off; y < S.H; y += 60) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(S.W, y); ctx.stroke(); }
+      if (laneW) {
+        const L = lx(S, 0) - laneW / 2, R = lx(S, 2) + laneW / 2;
+        // shelves on both sides
+        const sh = (dist || 0) % 46;
+        for (const [x0, x1] of [[0, L - 6], [R + 6, S.W]]) {
+          if (x1 - x0 < 8) continue;
+          ctx.fillStyle = '#8d6e63'; ctx.fillRect(x0, 0, x1 - x0, S.H);
+          for (let y = -46 + sh, i = Math.floor((dist || 0) / 46); y < S.H; y += 46, i--) {
+            const cols = ['#e57373', '#64b5f6', '#ffd54f', '#81c784', '#ba68c8'];
+            ctx.fillStyle = cols[((i % 5) + 5) % 5]; ctx.fillRect(x0 + 4, y + 6, x1 - x0 - 8, 34);
+            ctx.fillStyle = 'rgba(0,0,0,0.15)'; ctx.fillRect(x0 + 4, y + 36, x1 - x0 - 8, 4);
+          }
+        }
+        ctx.strokeStyle = 'rgba(120,100,70,0.35)'; ctx.setLineDash([18, 16]); ctx.lineDashOffset = -(dist || 0); ctx.lineWidth = 3;
+        for (const i of [0.5, 1.5]) { const xx = S.W / 2 + (i - 1) * laneW; ctx.beginPath(); ctx.moveTo(xx, 0); ctx.lineTo(xx, S.H); ctx.stroke(); }
+        ctx.setLineDash([]);
+        for (const o of objs || []) {
+          if (o.hit && (o.k === 'item' || o.k === 'power')) continue;
+          const ox = lx(S, o.lane);
+          if (o.k === 'spill') { ctx.fillStyle = 'rgba(100,181,246,0.6)'; ctx.beginPath(); ctx.ellipse(ox, o.y, laneW * 0.35, 18, 0, 0, Mini.TAU); ctx.fill(); Mini.emoji(ctx, '💧', ox, o.y, 22); continue; }
+          if (o.k === 'tall') { ctx.fillStyle = 'rgba(0,0,0,0.15)'; ctx.beginPath(); ctx.ellipse(ox, o.y + 20, 24, 8, 0, 0, Mini.TAU); ctx.fill(); }
+          Mini.emoji(ctx, o.e, ox, o.y, o.k === 'item' ? 30 : o.k === 'power' ? 34 : 46, o.k === 'item' ? Math.sin(S.time * 4 + o.y) * 0.2 : 0, o.k === 'cart');
+        }
+        // player
+        const z = jumpT > 0 ? Math.sin((1 - jumpT / 0.65) * Math.PI) * 46 : 0;
+        ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.beginPath(); ctx.ellipse(x, py + 22, 24 - z / 5, 8, 0, 0, Mini.TAU); ctx.fill();
+        if (!dead) Mini.emoji(ctx, '🛒', x, py - z, 52 + z / 6);
+        if (shield && !dead) { ctx.strokeStyle = 'rgba(0,188,212,0.7)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, py - z, 34, 0, Mini.TAU); ctx.stroke(); }
+        if (magnetT > 0) { ctx.strokeStyle = 'rgba(244,67,54,' + (0.3 + 0.2 * Math.sin(S.time * 10)) + ')'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, py - z, 44, 0, Mini.TAU); ctx.stroke(); }
+      }
+      parts.draw(ctx);
+      for (const f of floats || []) { ctx.globalAlpha = Math.min(1, f.t * 2); Mini.text(ctx, f.s, f.x, f.y, 18, '#fff59d'); }
+      ctx.globalAlpha = 1;
+      ctx.restore();
+      const top = S.top + 12;
+      Mini.text(ctx, Math.floor((dist || 0) / 10) + ' m', 14, top + 14, 20, '#fff', 'left');
+      Mini.text(ctx, '🛍️ ' + (items || 0), 14, top + 44, 18, '#fff', 'left');
+      if (shield) Mini.emoji(ctx, '🎟️', 24, top + 74, 24);
+    },
+  });
+})();
+</script>
+</body>
+</html>

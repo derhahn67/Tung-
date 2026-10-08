@@ -59,6 +59,14 @@
     ['pulse', '◉', 'Shield Pulse', 'Hold to grow a shield and bounce incoming debris, without overheating.'],
     ['idle', '⚙️', 'Task Automation', 'Idle clicker: deploy, automate and keep earning while you\'re away.'],
   ];
+  // Games already rebuilt as their own genre live in ../minis/ (the rest still use the horde engine).
+  const REMADE = {
+    grandma: ['Angry Grandma', 'Slingshot physics: fling Grandma\'s handbag and topple the pigeons\' towers.'],
+    numbers: ['Number Smasher', 'Swipe and merge matching numbers. Can you reach 2048?'],
+    cart: ['Shopping Cart Chaos', 'Endless supermarket runner: switch aisles, jump boxes, grab groceries.'],
+    chicken: ['Chicken Apocalypse', 'Hop across roads, rivers and railways. Don\'t let the fox catch you!'],
+    color: ['Color Match', 'Tap to bounce through spinning rings, but only through your own color.'],
+  };
   let cat = null, grid = null, n = 0;
   for (const id of Horde.order) {
     const g = Horde.games[id];
@@ -68,11 +76,19 @@
       grid = document.createElement('div'); grid.className = 'grid'; main.appendChild(grid);
     }
     n++;
-    const best = Horde.store.get('best-' + id, 0);
     const a = document.createElement('a');
-    a.className = 'game'; a.href = 'play.html?g=' + encodeURIComponent(id);
-    a.innerHTML = '<span class="ic">' + g.icon + '</span><span class="info"><b><span class="num">' + n + '.</span>' + esc(g.name) + '</b><small>' + esc(g.hook) + '</small>' +
-      (best ? '<span class="best">Best: ' + Horde.fmtTime(best) + '</span>' : '') + '</span>';
+    a.className = 'game';
+    if (REMADE[id]) {
+      let best = null; try { best = JSON.parse(localStorage.getItem('mini-best-' + id)); } catch (e) { /* ignore */ }
+      a.href = '../minis/' + id + '.html';
+      a.innerHTML = '<span class="ic">' + g.icon + '</span><span class="info"><b><span class="num">' + n + '.</span>' + esc(REMADE[id][0]) + '</b><small>' + esc(REMADE[id][1]) + '</small>' +
+        (best != null ? '<span class="best">Best: ' + best + '</span>' : '') + '</span>';
+    } else {
+      const best = Horde.store.get('best-' + id, 0);
+      a.href = 'play.html?g=' + encodeURIComponent(id);
+      a.innerHTML = '<span class="ic">' + g.icon + '</span><span class="info"><b><span class="num">' + n + '.</span>' + esc(g.name) + '</b><small>' + esc(g.hook) + '</small>' +
+        (best ? '<span class="best">Best: ' + Horde.fmtTime(best) + '</span>' : '') + '</span>';
+    }
     grid.appendChild(a);
   }
   // Play-money casino: every game shares one fake-chips wallet.

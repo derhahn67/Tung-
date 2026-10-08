@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Color Match</title>
+<script src="../cookies.js" defer></script>
+</head>
+<body>
+<script src="mini.js"></script>
+<script>
+(() => {
+  const COL = ['#32e0c4', '#f9d923', '#ff2e63', '#8f5aff'], GAP = 400, GRAV = 1250, JUMP = 430, BR = 11;
+  const parts = Mini.particles();
+  let ball, obs, cam, score, dead, started, nextY, count;
+  function addObstacle(S) {
+    count++;
+    const y = nextY, lvl = Math.min(1, count / 25), r = Math.random();
+    const spd = (Math.random() < 0.5 ? -1 : 1) * Mini.rand(1.3, 1.9 + lvl * 1.4);
+    if (count > 4 && r < 0.25) obs.push({ k: 'double', y, R: 96, R2: 66, rot: 0, spd, th: 15 });
+    else if (count > 2 && r < 0.5) obs.push({ k: 'bar', y, off: 0, spd: Mini.rand(80, 130 + lvl * 120) * (Math.random() < 0.5 ? -1 : 1), th: 16 });
+    else obs.push({ k: 'ring', y, R: Mini.rand(86, 108), rot: Mini.rand(0, Mini.TAU), spd, th: 17 });
+    obs.push({ k: 'star', y, got: false });
+    obs.push({ k: 'switch', y: y - GAP / 2, got: false });
+    nextY -= GAP;
+  }
+  const segColor = (ang, rot) => { const a = ((ang - rot) % Mini.TAU + Mini.TAU) % Mini.TAU; return Math.floor(a / (Mini.TAU / 4)); };
+  function die(S) {
+    if (dead) return;
+    dead = true; Mini.sfx('hit');
+    parts.burst(ball.x, ball.y, COL[ball.c], 26, 300, 6, 600);
+    S.over(score, 'WRONG COLOR!', score + ' stars');
+  }
+  Mini.game({
+    id: 'color', title: 'Color Match', icon: '🎨',
+    tagline: 'Tap to bounce your ball upward, but you can only pass through the parts that match your color!',
+    how: '👆 Tap (or Space) to jump.<br>🎨 Only pass through your own color. 🔮 changes your color.<br>⭐ Collect stars for points.',
+    init(S) {
+      ball = { x: S.W / 2, y: 0, vy: 0, c: Mini.randInt(0, 3) };
+      obs = []; cam = -S.H * 0.7; score = 0; dead = false; started = false; nextY = -260; count = 0; parts.clear();
+      for (let i = 0; i < 4; i++) addObstacle(S);
+    },
+    resize(S) { if (ball) ball.x = S.W / 2; },
+    down() { if (dead) return; started = true; ball.vy = -JUMP; Mini.sfx('tap'); },
+    key(code) { if (code === 'Space' || code === 'ArrowUp' || code === 'KeyW') this.down(); },
+    update(dt, S) {
+      parts.update(dt);
+      if (dead) return;
+      ball.x = S.W / 2;
+      if (started) { ball.vy += GRAV * dt; ball.y += ball.vy * dt; }
+      cam = Math.min(cam, ball.y - S.H * 0.55);
+      if (ball.y > cam + S.H + 20) return die(S);
+      while (nextY > cam - S.H) addObstacle(S);
+      for (const o of obs) {
+        if (o.k === 'ring' || o.k === 'double') o.rot += o.spd * dt;
+        if (o.k === 'bar') o.off += o.spd * dt;
+        const cx = S.W / 2, dy = ball.y - o.y;
+        if (o.k === 'ring' || o.k === 'double') {
+          const rings = o.k === 'ring' ? [[o.R, o.rot]] : [[o.R, o.rot], [o.R2, -o.rot]];
+          for (const [R, rot] of rings) {
+            const d = Math.abs(dy);
+            if (Math.abs(d - R) < o.th / 2 + BR - 2) { const c = segColor(Math.atan2(dy, 0.0001), rot); if (c !== ball.c) return die(S); }
+          }
+        } else if (o.k === 'bar') {
+          if (Math.abs(dy) < o.th / 2 + BR - 2) {
+            const segW = S.W / 2, x = ((cx - o.off) % (segW * 4) + segW * 4) % (segW * 4);
+            if (Math.floor(x / segW) !== ball.c) return die(S);
+          }
+        } else if (!o.got && Math.abs(dy) < 22) {
+          o.got = true;
+          if (o.k === 'star') { score++; Mini.sfx('coin'); parts.burst(cx, o.y, '#fff', 12, 180, 4, 0); }
+          else { let c; do { c = Mini.randInt(0, 3); } while (c === ball.c); ball.c = c; Mini.sfx('pop'); parts.burst(cx, o.y, COL[c], 14, 200, 4, 0); }
+        }
+      }
+      obs = obs.filter((o) => o.y < cam + S.H + 200);
+    },
+    draw(ctx, S) {
+      ctx.fillStyle = '#16161e'; ctx.fillRect(0, 0, S.W, S.H);
+      if (!ball) return;
+      ctx.save(); ctx.translate(0, -cam);
+      const cx = S.W / 2;
+      for (const o of obs) {
+        if (o.k === 'ring' || o.k === 'double') {
+          const rings = o.k === 'ring' ? [[o.R, o.rot]] : [[o.R, o.rot], [o.R2, -o.rot]];
+          for (const [R, rot] of rings) for (let i = 0; i < 4; i++) {
+            ctx.strokeStyle = COL[i]; ctx.lineWidth = o.th; ctx.lineCap = 'butt';
+            ctx.beginPath(); ctx.arc(cx, o.y, R, rot + i * Mini.TAU / 4 + 0.02, rot + (i + 1) * Mini.TAU / 4 - 0.02); ctx.stroke();
+          }
+        } else if (o.k === 'bar') {
+          const segW = S.W / 2;
+          for (let k = -1; k < 6; k++) {
+            const x = ((o.off % (segW * 4)) + segW * 4) % (segW * 4) - segW * 4 + k * segW;
+            ctx.fillStyle = COL[((k % 4) + 4) % 4]; ctx.fillRect(x, o.y - o.th / 2, segW - 3, o.th);
+          }
+        } else if (o.k === 'star' && !o.got) Mini.emoji(ctx, '⭐', cx, o.y, 26, Math.sin(S.time * 3) * 0.3);
+        else if (o.k === 'switch' && !o.got) {
+          for (let i = 0; i < 4; i++) { ctx.fillStyle = COL[i]; ctx.beginPath(); ctx.moveTo(cx, o.y); ctx.arc(cx, o.y, 12, S.time * 2 + i * Mini.TAU / 4, S.time * 2 + (i + 1) * Mini.TAU / 4); ctx.closePath(); ctx.fill(); }
+        }
+      }
+      if (!dead) { ctx.fillStyle = COL[ball.c]; ctx.beginPath(); ctx.arc(ball.x, ball.y, BR, 0, Mini.TAU); ctx.fill(); }
+      parts.draw(ctx);
+      ctx.restore();
+      Mini.text(ctx, String(score), S.W / 2, S.top + 34, 40, '#fff');
+      if (!started && S.state === 'play') Mini.text(ctx, 'Tap to jump', S.W / 2, S.H * 0.8, 20, '#fff');
+    },
+  });
+})();
+</script>
+</body>
+</html>
