@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Dice Roller</title>
+<script src="../cookies.js" defer></script>
+</head>
+<body>
+<script src="mini.js"></script>
+<script>
+(() => {
+  const PIPS = { 1: [[0, 0]], 2: [[-1, -1], [1, 1]], 3: [[-1, -1], [0, 0], [1, 1]], 4: [[-1, -1], [1, -1], [-1, 1], [1, 1]], 5: [[-1, -1], [1, -1], [0, 0], [-1, 1], [1, 1]], 6: [[-1, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [1, 1]] };
+  const sum = (d) => d.reduce((a, b) => a + b, 0);
+  const counts = (d) => { const c = [0, 0, 0, 0, 0, 0, 0]; d.forEach((v) => c[v]++); return c; };
+  const straight = (d, n) => { const s = new Set(d); for (let a = 1; a + n - 1 <= 6; a++) { let ok = true; for (let k = 0; k < n; k++) if (!s.has(a + k)) ok = false; if (ok) return true; } return false; };
+  const CATS = [
+    ['Ones', '⚀', (d) => counts(d)[1]], ['Twos', '⚁', (d) => counts(d)[2] * 2], ['Threes', '⚂', (d) => counts(d)[3] * 3],
+    ['Fours', '⚃', (d) => counts(d)[4] * 4], ['Fives', '⚄', (d) => counts(d)[5] * 5], ['Sixes', '⚅', (d) => counts(d)[6] * 6],
+    ['3 of a kind', '3×', (d) => (counts(d).some((c) => c >= 3) ? sum(d) : 0)], ['4 of a kind', '4×', (d) => (counts(d).some((c) => c >= 4) ? sum(d) : 0)],
+    ['Full house', '🏠', (d) => { const c = counts(d); return (c.includes(3) && c.includes(2)) ? 25 : 0; }], ['Small straight', '▸4', (d) => (straight(d, 4) ? 30 : 0)],
+    ['Large straight', '▸5', (d) => (straight(d, 5) ? 40 : 0)], ['YAHTZEE', '🎲', (d) => (counts(d).includes(5) ? 50 : 0)], ['Chance', '❓', (d) => sum(d)],
+  ];
+  const parts = Mini.particles();
+  let dice, held, rollsLeft, card, round, rollT, bonusY, msg, L;
+  const upper = () => card.slice(0, 6).reduce((a, v) => a + (v || 0), 0);
+  const total = () => card.reduce((a, v) => a + (v || 0), 0) + (upper() >= 63 ? 35 : 0) + bonusY;
+  function layout(S) {
+    const w = Math.min(S.W - 20, 460), x = (S.W - w) / 2;
+    const ds = Math.min(62, (w - 40) / 5);
+    const dy = S.top + 90, cardY = dy + ds + 84, rowH = Math.min(46, (S.bot - cardY - 50) / 7);
+    L = { x, w, ds, dy, cardY, rowH, colW: (w - 10) / 2, rollY: dy + ds + 18 };
+  }
+  function roll() {
+    if (rollsLeft <= 0 || rollT > 0 || round >= 13) return;
+    rollsLeft--; rollT = 0.55; Mini.sfx('swoosh');
+    for (let i = 0; i < 5; i++) if (!held[i]) dice[i] = Mini.randInt(1, 6);
+  }
+  function choose(i, S) {
+    if (card[i] != null || rollsLeft === 3 || rollT > 0) return;
+    const yahtzee = counts(dice).includes(5);
+    if (yahtzee && card[11] === 50) { bonusY += 100; msg = { t: 1.4, s: 'YAHTZEE BONUS +100!' }; }
+    card[i] = CATS[i][2](dice);
+    if (i === 11 && card[i] === 50) { msg = { t: 1.6, s: 'YAHTZEE!' }; parts.burst(S.W / 2, L.dy + L.ds / 2, '#ffd54f', 40, 320, 6, 300); Mini.sfx('win'); }
+    else Mini.sfx(card[i] ? 'coin' : 'tap');
+    round++; held = [false, false, false, false, false]; rollsLeft = 3;
+    if (round >= 13) S.over(total(), 'GAME COMPLETE', 'Upper ' + upper() + (upper() >= 63 ? ' (+35 bonus)' : '') + (bonusY ? ' · Yahtzee bonus ' + bonusY : ''));
+  }
+  function catRect(i) { const col = i < 6 ? 0 : 1, row = i < 6 ? i : i - 6; return { x: L.x + col * (L.colW + 10), y: L.cardY + row * L.rowH, w: L.colW, h: L.rowH - 5 }; }
+  function drawDie(ctx, x, y, s, v, isHeld, rot) {
+    ctx.save(); ctx.translate(x + s / 2, y + s / 2); ctx.rotate(rot);
+    ctx.fillStyle = 'rgba(0,0,0,.3)'; Mini.rrect(ctx, -s / 2 + 3, -s / 2 + 5, s, s, s * 0.18); ctx.fill();
+    ctx.fillStyle = isHeld ? '#fff59d' : '#fafafa'; Mini.rrect(ctx, -s / 2, -s / 2, s, s, s * 0.18); ctx.fill();
+    ctx.strokeStyle = isHeld ? '#f9a825' : '#bdbdbd'; ctx.lineWidth = isHeld ? 4 : 2; ctx.stroke();
+    ctx.fillStyle = v === 1 ? '#c62828' : '#212121';
+    for (const [px, py] of PIPS[v]) { ctx.beginPath(); ctx.arc(px * s * 0.26, py * s * 0.26, s * (v === 1 ? 0.12 : 0.085), 0, Mini.TAU); ctx.fill(); }
+    ctx.restore();
+  }
+  Mini.game({
+    id: 'dice', title: 'Dice Roller', icon: '🎲',
+    tagline: 'The classic dice game! 13 rounds, 3 rolls each. Hold the dice you like and fill your scorecard for the highest total.',
+    how: '🎲 Roll up to 3 times per round. Tap dice to HOLD them between rolls.<br>📋 Then tap a category to score it (each one once).<br>⭐ Upper section 63+ = +35 bonus. Five of a kind = YAHTZEE (50)!',
+    init(S) { layout(S); dice = [1, 2, 3, 4, 5]; held = [false, false, false, false, false]; rollsLeft = 3; card = Array(13).fill(null); round = 0; rollT = 0; bonusY = 0; msg = null; parts.clear(); },
+    resize(S) { if (dice) layout(S); },
+    tap(x, y, S) {
+      for (let i = 0; i < 5; i++) { const dx = L.x + 20 + i * (L.w - 40) / 5; if (x > dx && x < dx + L.ds && y > L.dy && y < L.dy + L.ds && rollsLeft < 3 && rollT <= 0) { held[i] = !held[i]; Mini.sfx('tap'); return; } }
+      if (y > L.rollY && y < L.rollY + 48 && Math.abs(x - S.W / 2) < 100) { roll(); return; }
+      for (let i = 0; i < 13; i++) { const r = catRect(i); if (x > r.x && x < r.x + r.w && y > r.y && y < r.y + r.h) { choose(i, S); return; } }
+    },
+    key(code, S) { if (code === 'Space' || code === 'KeyR') roll(); if (/^Digit[1-5]$/.test(code) && rollsLeft < 3) held[+code.slice(5) - 1] = !held[+code.slice(5) - 1]; },
+    update(dt) {
+      parts.update(dt);
+      if (msg) { msg.t -= dt; if (msg.t <= 0) msg = null; }
+      if (rollT > 0) { rollT -= dt; if (rollT <= 0) { rollT = 0; Mini.sfx('pop'); if (counts(dice).includes(5)) msg = { t: 1.2, s: 'FIVE OF A KIND!' }; } }
+    },
+    draw(ctx, S) {
+      ctx.fillStyle = '#1d6b45'; ctx.fillRect(0, 0, S.W, S.H);
+      const g = ctx.createRadialGradient(S.W / 2, S.H / 3, 40, S.W / 2, S.H / 2, Math.max(S.W, S.H)); g.addColorStop(0, 'rgba(255,255,255,.07)'); g.addColorStop(1, 'rgba(0,0,0,.35)');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, S.W, S.H);
+      if (!dice) return;
+      const top = S.top + 14;
+      Mini.text(ctx, 'Round ' + Math.min(13, round + 1) + '/13', 14, top + 16, 16, '#fff', 'left');
+      Mini.text(ctx, String(total()), S.W / 2, top + 18, 30, '#ffd54f');
+      for (let i = 0; i < 5; i++) {
+        const x = L.x + 20 + i * (L.w - 40) / 5;
+        const v = rollT > 0 && !held[i] ? 1 + Math.floor((S.time * 30 + i * 7) % 6) : dice[i];
+        drawDie(ctx, x, L.dy, L.ds, v, held[i], rollT > 0 && !held[i] ? Math.sin(S.time * 40 + i) * 0.4 : 0);
+        if (held[i]) Mini.text(ctx, 'HELD', x + L.ds / 2, L.dy - 10, 11, '#fff59d', 'center', null);
+      }
+      const canRoll = rollsLeft > 0 && round < 13;
+      ctx.fillStyle = canRoll ? '#ffd54f' : 'rgba(255,255,255,.2)'; Mini.rrect(ctx, S.W / 2 - 100, L.rollY, 200, 48, 14); ctx.fill();
+      Mini.text(ctx, rollsLeft === 3 ? '🎲 ROLL' : canRoll ? '🎲 ROLL (' + rollsLeft + ' left)' : 'Pick a score ↓', S.W / 2, L.rollY + 24, 17, canRoll ? '#3e2723' : '#fff', 'center', null);
+      for (let i = 0; i < 13; i++) {
+        const r = catRect(i), used = card[i] != null, pot = rollsLeft < 3 && rollT <= 0 && !used ? CATS[i][2](dice) : null;
+        ctx.fillStyle = used ? 'rgba(0,0,0,.35)' : pot != null ? (pot > 0 ? 'rgba(255,213,79,.28)' : 'rgba(255,255,255,.1)') : 'rgba(255,255,255,.12)';
+        Mini.rrect(ctx, r.x, r.y, r.w, r.h, 8); ctx.fill();
+        Mini.text(ctx, CATS[i][1] + ' ' + CATS[i][0], r.x + 10, r.y + r.h / 2, Math.min(14, r.h * 0.36), used ? '#9e9e9e' : '#fff', 'left', null);
+        Mini.text(ctx, used ? String(card[i]) : pot != null ? String(pot) : '', r.x + r.w - 10, r.y + r.h / 2, Math.min(16, r.h * 0.42), used ? '#fff' : '#ffd54f', 'right', null);
+      }
+      const ub = { x: L.x, y: L.cardY + 6 * L.rowH, w: L.colW, h: L.rowH - 5 };
+      ctx.fillStyle = 'rgba(0,0,0,.25)'; Mini.rrect(ctx, ub.x, ub.y, ub.w, ub.h, 8); ctx.fill();
+      Mini.text(ctx, 'Bonus (' + upper() + '/63)', ub.x + 10, ub.y + ub.h / 2, Math.min(13, ub.h * 0.34), '#c8e6c9', 'left', null);
+      Mini.text(ctx, upper() >= 63 ? '+35' : '–', ub.x + ub.w - 10, ub.y + ub.h / 2, 15, '#ffd54f', 'right', null);
+      parts.draw(ctx);
+      if (msg) { ctx.globalAlpha = Math.min(1, msg.t * 2); Mini.text(ctx, msg.s, S.W / 2, L.dy + L.ds + 4, 26, '#ffeb3b'); ctx.globalAlpha = 1; }
+    },
+  });
+})();
+</script>
+</body>
+</html>

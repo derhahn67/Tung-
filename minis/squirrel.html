@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Squirrel Nuts</title>
+<script src="../cookies.js" defer></script>
+</head>
+<body>
+<script src="mini.js"></script>
+<script>
+(() => {
+  const GRAV = 520, MAXP = 120;
+  let PK = 6.2; // throw power per pixel of drag, scaled to the screen width in newRound()
+  const WEAPONS = { acorn: { e: '🌰', R: 30, dmg: 38 }, walnut: { e: '🥥', R: 56, dmg: 58 } };
+  const parts = Mini.particles();
+  let H, me, owl, turn, shot, wind, aim, round, wins, weapon, walnutUsed, msg, thinkT, booms, Wd, floorY;
+  function terrain(S) {
+    Wd = Math.ceil(S.W); H = new Float32Array(Wd + 1);
+    const base = S.H * 0.68, a1 = Mini.rand(30, 60), a2 = Mini.rand(15, 35), p1 = Math.random() * 6, p2 = Math.random() * 6, hill = Mini.rand(60, 140);
+    for (let x = 0; x <= Wd; x++) {
+      const t = x / Wd;
+      H[x] = base - Math.sin(t * Math.PI * 2 + p1) * a1 - Math.sin(t * Math.PI * 5 + p2) * a2 - Math.exp(-((t - 0.5) ** 2) / 0.02) * hill;
+    }
+    floorY = S.H;
+  }
+  const ground = (x) => H[Mini.clamp(Math.round(x), 0, Wd)];
+  function newRound(S) {
+    terrain(S);
+    PK = 6.4 * Math.sqrt(Mini.clamp(S.W / 1100, 0.3, 1));
+    me = { x: S.W * 0.13, y: 0, hp: 100 }; owl = { x: S.W * 0.87, y: 0, hp: 100 };
+    me.y = ground(me.x); owl.y = ground(owl.x);
+    turn = 'me'; shot = null; aim = null; weapon = 'acorn'; walnutUsed = false; booms = [];
+    wind = Mini.rand(-1, 1) * (40 + round * 12);
+    msg = { t: 1.6, s: 'Round ' + (round + 1) };
+  }
+  function crater(x, y, R) {
+    for (let i = Math.max(0, Math.floor(x - R)); i <= Math.min(Wd, Math.ceil(x + R)); i++) {
+      const dy = Math.sqrt(Math.max(0, R * R - (i - x) ** 2));
+      if (H[i] < y + dy) H[i] = Math.max(H[i], Math.min(floorY - 20, y + dy));
+    }
+  }
+  function fire(from, vx, vy, w, who) { shot = { x: from.x, y: from.y - 26, vx, vy, w, who, rot: 0 }; Mini.sfx('swoosh'); }
+  function explode(S, x, y) {
+    const W = WEAPONS[shot.w];
+    crater(x, y, W.R);
+    booms.push({ x, y, R: W.R, t: 0.4 });
+    parts.burst(x, y, '#8d6e63', 24, 260, 5); Mini.sfx('boom');
+    for (const u of [me, owl]) {
+      const d = Math.hypot(u.x - x, u.y - 16 - y);
+      if (d < W.R + 18) { const dmg = Math.round(W.dmg * (1 - Math.max(0, d - 18) / W.R)); u.hp = Math.max(0, u.hp - dmg); u.hit = { v: dmg, t: 1.2 }; }
+    }
+    shot = null;
+    if (owl.hp <= 0) { wins++; msg = { t: 2, s: 'Owl defeated! 🎉' }; Mini.sfx('win'); turn = 'won'; thinkT = 2.2; return; }
+    if (me.hp <= 0) { turn = 'lost'; thinkT = 1.4; Mini.sfx('lose'); return; }
+    turn = turn === 'me-shot' ? 'owl' : 'me';
+    if (turn === 'owl') thinkT = 1.1;
+    wind += Mini.rand(-25, 25); wind = Mini.clamp(wind, -150, 150);
+  }
+  // Simulate a shot so the owl can pick a good angle/power (and so we can draw an aiming arc).
+  function simulate(x, y, vx, vy, steps = 400) {
+    for (let i = 0; i < steps; i++) { const dt = 1 / 60; vx += wind * dt; vy += GRAV * dt; x += vx * dt; y += vy * dt; if (x < 0 || x > Wd) return { x, y, out: true }; if (y >= ground(x)) return { x, y }; }
+    return { x, y, out: true };
+  }
+  function owlShot() {
+    let best = null;
+    for (let i = 0; i < 260; i++) {
+      const ang = Mini.rand(Math.PI * 1.05, Math.PI * 1.45), p = Mini.rand(0.3, 1) * MAXP * PK;
+      const vx = Math.cos(ang) * p, vy = Math.sin(ang) * p;
+      const r = simulate(owl.x, owl.y - 26, vx, vy);
+      const d = r.out ? 1e9 : Math.hypot(r.x - me.x, r.y - me.y);
+      if (!best || d < best.d) best = { vx, vy, d };
+    }
+    const err = Math.max(0.03, 0.22 - round * 0.03);
+    fire(owl, best.vx * (1 + Mini.rand(-err, err)), best.vy * (1 + Mini.rand(-err, err) * 0.5), round >= 2 && Math.random() < 0.15 ? 'walnut' : 'acorn', 'owl');
+  }
+  function launchFromAim() {
+    const dx = me.x - aim.x, dy = me.y - 26 - aim.y, d = Math.min(MAXP, Math.hypot(dx, dy));
+    if (d < 15) { aim = null; return; }
+    const a = Math.atan2(dy, dx);
+    fire(me, Math.cos(a) * d * PK, Math.sin(a) * d * PK, weapon, 'me');
+    if (weapon === 'walnut') { walnutUsed = true; weapon = 'acorn'; }
+    turn = 'me-shot'; aim = null;
+  }
+  const wBtn = (S) => ({ x: 14, y: S.bot - 64, w: 120, h: 48 });
+  Mini.game({
+    id: 'squirrel', title: 'Squirrel Nuts', icon: '🐿️',
+    tagline: 'An owl has been stealing your nut stash. Settle it with a good old-fashioned artillery duel across the hills!',
+    how: '👆 Drag back from your squirrel, aim, release to throw (like a slingshot).<br>🌬️ Mind the wind! The arrow shows its strength.<br>🥥 One giant walnut per round. Shots blast craters in the hills.',
+    init(S) { round = 0; wins = 0; parts.clear(); newRound(S); },
+    down(x, y, S) {
+      const b = wBtn(S);
+      if (turn === 'me' && x > b.x && x < b.x + b.w && y > b.y && y < b.y + b.h) { if (!walnutUsed) { weapon = weapon === 'acorn' ? 'walnut' : 'acorn'; Mini.sfx('tap'); } return; }
+      if (turn === 'me') aim = { x, y };
+    },
+    move(x, y) { if (aim) { aim.x = x; aim.y = y; } },
+    up() { if (aim && turn === 'me') launchFromAim(); },
+    update(dt, S) {
+      parts.update(dt);
+      if (msg) { msg.t -= dt; if (msg.t <= 0) msg = null; }
+      booms.forEach((b) => { b.t -= dt; }); booms = booms.filter((b) => b.t > 0);
+      for (const u of [me, owl]) { const gy = ground(u.x); u.y = u.y < gy ? Math.min(gy, u.y + 300 * dt) : gy; if (u.hit) { u.hit.t -= dt; if (u.hit.t <= 0) u.hit = null; } if (u.y >= floorY - 25) u.hp = 0; }
+      if (shot) {
+        shot.vx += wind * dt; shot.vy += GRAV * dt; shot.x += shot.vx * dt; shot.y += shot.vy * dt; shot.rot += dt * 10;
+        const target = shot.who === 'me' ? owl : me;
+        if (Math.hypot(target.x - shot.x, target.y - 16 - shot.y) < 22 || (shot.x >= 0 && shot.x <= Wd && shot.y >= ground(shot.x))) explode(S, shot.x, shot.y);
+        else if (shot.x < -100 || shot.x > S.W + 100 || shot.y > S.H + 50) { shot = null; turn = turn === 'me-shot' ? 'owl' : 'me'; if (turn === 'owl') thinkT = 1.1; }
+      }
+      if (turn === 'owl') { thinkT -= dt; if (thinkT <= 0) { turn = 'owl-shot'; owlShot(); } }
+      if (turn === 'won') { thinkT -= dt; if (thinkT <= 0) { round++; newRound(S); } }
+      if (turn === 'lost') { thinkT -= dt; if (thinkT <= 0) { turn = 'over'; S.over(wins * 100 + Math.round(owl ? 100 - owl.hp : 0), 'NUTS!', 'Owls defeated: ' + wins); } }
+    },
+    draw(ctx, S) {
+      const g = ctx.createLinearGradient(0, 0, 0, S.H); g.addColorStop(0, '#ffcc80'); g.addColorStop(0.6, '#ffe0b2'); g.addColorStop(1, '#fff3e0');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, S.W, S.H);
+      ctx.fillStyle = '#fff59d'; ctx.beginPath(); ctx.arc(S.W * 0.75, S.top + 120, 36, 0, Mini.TAU); ctx.fill();
+      if (!H) return;
+      ctx.fillStyle = '#a1887f'; ctx.globalAlpha = 0.35;
+      ctx.beginPath(); ctx.moveTo(0, S.H); for (let x = 0; x <= Wd; x += 8) ctx.lineTo(x, H[0] * 0.9 - Math.sin(x / 60) * 40 - 40); ctx.lineTo(S.W, S.H); ctx.fill(); ctx.globalAlpha = 1;
+      ctx.fillStyle = '#6d4c41'; ctx.beginPath(); ctx.moveTo(0, S.H); for (let x = 0; x <= Wd; x += 2) ctx.lineTo(x, H[x]); ctx.lineTo(S.W, S.H); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = '#7cb342'; ctx.lineWidth = 6; ctx.beginPath(); for (let x = 0; x <= Wd; x += 2) (x ? ctx.lineTo(x, H[x]) : ctx.moveTo(x, H[x])); ctx.stroke();
+      for (const b of booms) { ctx.globalAlpha = b.t / 0.4; ctx.fillStyle = '#ffb74d'; ctx.beginPath(); ctx.arc(b.x, b.y, b.R * (1.3 - b.t), 0, Mini.TAU); ctx.fill(); }
+      ctx.globalAlpha = 1;
+      Mini.emoji(ctx, '🐿️', me.x, me.y - 20, 42, 0, true);
+      Mini.emoji(ctx, '🦉', owl.x, owl.y - 22, 44);
+      for (const u of [me, owl]) {
+        ctx.fillStyle = 'rgba(0,0,0,.4)'; ctx.fillRect(u.x - 26, u.y - 58, 52, 7);
+        ctx.fillStyle = u.hp > 40 ? '#66bb6a' : '#ef5350'; ctx.fillRect(u.x - 26, u.y - 58, 52 * u.hp / 100, 7);
+        if (u.hit) Mini.text(ctx, '-' + u.hit.v, u.x, u.y - 75 - (1.2 - u.hit.t) * 20, 18, '#d32f2f');
+      }
+      if (aim) {
+        const dx = me.x - aim.x, dy = me.y - 26 - aim.y, d = Math.min(MAXP, Math.hypot(dx, dy)), a = Math.atan2(dy, dx);
+        let x = me.x, y = me.y - 26, vx = Math.cos(a) * d * PK, vy = Math.sin(a) * d * PK;
+        ctx.fillStyle = 'rgba(62,39,35,.7)';
+        for (let i = 0; i < 26; i++) { for (let k = 0; k < 3; k++) { vx += wind / 60; vy += GRAV / 60; x += vx / 60; y += vy / 60; } ctx.beginPath(); ctx.arc(x, y, 3.2 - i * 0.08, 0, Mini.TAU); ctx.fill(); if (y > ground(x)) break; }
+        Mini.text(ctx, Math.round(d / MAXP * 100) + '%', me.x, me.y - 90, 16, '#3e2723', 'center', 'rgba(255,255,255,.7)');
+      }
+      if (shot) Mini.emoji(ctx, WEAPONS[shot.w].e, shot.x, shot.y, shot.w === 'walnut' ? 34 : 24, shot.rot);
+      parts.draw(ctx);
+      // HUD
+      const top = S.top + 14;
+      Mini.text(ctx, 'Round ' + (round + 1) + ' · Wins ' + wins, 14, top + 16, 16, '#4e342e', 'left', 'rgba(255,255,255,.7)');
+      const wl = Math.abs(wind) / 150 * 70;
+      Mini.text(ctx, '🌬️', S.W / 2 - 50, top + 46, 20, '#fff', 'center', null);
+      ctx.strokeStyle = '#4e342e'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(S.W / 2, top + 46); ctx.lineTo(S.W / 2 + Math.sign(wind) * wl, top + 46); ctx.stroke();
+      if (wl > 4) { ctx.fillStyle = '#4e342e'; ctx.beginPath(); const ex = S.W / 2 + Math.sign(wind) * wl; ctx.moveTo(ex + Math.sign(wind) * 8, top + 46); ctx.lineTo(ex, top + 40); ctx.lineTo(ex, top + 52); ctx.fill(); }
+      const turnText = turn === 'me' ? 'Your turn: drag back to aim' : turn === 'owl' || turn === 'owl-shot' ? 'Owl is aiming…' : '';
+      Mini.text(ctx, turnText, S.W / 2, top + 76, 15, '#4e342e', 'center', 'rgba(255,255,255,.7)');
+      const b = wBtn(S);
+      ctx.fillStyle = turn === 'me' ? (weapon === 'walnut' ? '#ff7043' : 'rgba(62,39,35,.8)') : 'rgba(62,39,35,.4)'; Mini.rrect(ctx, b.x, b.y, b.w, b.h, 12); ctx.fill();
+      Mini.text(ctx, (weapon === 'walnut' ? '🥥 Walnut' : walnutUsed ? '🌰 (🥥 used)' : '🌰 Acorn ⇄'), b.x + b.w / 2, b.y + b.h / 2, 14, '#fff', 'center', null);
+      if (msg) { ctx.globalAlpha = Math.min(1, msg.t * 2); Mini.text(ctx, msg.s, S.W / 2, S.H * 0.3, 30, '#e65100', 'center', 'rgba(255,255,255,.8)'); ctx.globalAlpha = 1; }
+    },
+  });
+})();
+</script>
+</body>
+</html>

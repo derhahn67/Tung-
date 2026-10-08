@@ -35,72 +35,45 @@
 <header>
   <h1>🕹️ All <span>Games</span></h1>
   <a href="../index.html">← Back to console</a>
-  <p>Every game in one place: 20 horde-survival games, a play-money casino and the 9 console classics. Works on phone and desktop. Pick one and play.</p>
+  <p>Every game in one place: 20 mini-games in 20 different genres, a play-money casino and the 9 console classics. Works on phone and desktop. Pick one and play.</p>
 </header>
 <main id="list"></main>
-<script src="engine.js"></script>
-<script src="games-chaos.js"></script>
-<script src="games-retro.js"></script>
-<script src="games-animal.js"></script>
-<script src="games-math.js"></script>
 <script>
 (() => {
   const main = document.getElementById('list');
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  // Games that live inside the main console page; each opens straight into its module via a #hash link.
-  const CLASSICS = [
-    ['surv', '☣️', 'Load Test Sim', 'Full survivor game: weapons, evolutions, playable characters, bosses and a loot wheel.'],
-    ['snake', '🐍', 'Network Flow', 'Classic Snake. Steer the packet route, eat, grow, don\'t crash.'],
-    ['tetris', '🧱', 'DB Defragmenter', 'Classic falling-block puzzle with hold and hard drop.'],
-    ['flap', '➤', 'Packet Router', 'Flappy-style: tap to boost through firewall gaps and unlock builds.'],
-    ['shaft', '⇅', 'Stack Descent', 'Fall down a shaft and tap to flip sideways gravity through the gaps.'],
-    ['swing', '◎', 'Hook Swing', 'Swing from hooks: let go, fly, and grab the next one in reach.'],
-    ['worm', '〰️', 'Log Trail', 'Flappy flight where every orb grows a tail that can clip the gaps.'],
-    ['pulse', '◉', 'Shield Pulse', 'Hold to grow a shield and bounce incoming debris, without overheating.'],
-    ['idle', '⚙️', 'Task Automation', 'Idle clicker: deploy, automate and keep earning while you\'re away.'],
+  const best = (id) => { try { return JSON.parse(localStorage.getItem('mini-best-' + id)); } catch (e) { return null; } };
+  // [file id, icon, name, description] — each game lives in ../minis/<id>.html
+  const GROUPS = [
+    ['Physics & Aim', [
+      ['grandma', '👵', 'Angry Grandma', 'Slingshot physics: fling Grandma\'s handbag and topple the pigeons\' towers.'],
+      ['squirrel', '🐿️', 'Squirrel Nuts', 'Artillery duel: lob acorns at the owl across destructible hills. Mind the wind!'],
+      ['slipper', '🥿', 'Slipper Thrower', '60-second shooting gallery: flick slippers at bugs, build combos, spare the cat.'],
+      ['vacuum', '💰', 'Coin Vacuum', 'Coin pusher: drop coins, let the pusher shove the pile and scoop up the jackpot.'],
+      ['bounce', '🔵', 'Bounce Arena', 'Peg shooter: aim, fire and clear every orange peg with chain-reaction bounces.'],
+    ]],
+    ['Runners & Jumpers', [
+      ['cart', '🛒', 'Shopping Cart Chaos', 'Endless supermarket runner: switch aisles, jump boxes, grab groceries.'],
+      ['chicken', '🐔', 'Chicken Apocalypse', 'Hop across roads, rivers and railways. Don\'t let the fox catch you!'],
+      ['cat', '🐱', 'Catnip Rush', 'Vertical jumper: bounce up the living room on cushions and yarn springs.'],
+      ['magnet', '🧲', 'Magnet Run', 'Flip polarity to snap between floor and ceiling and dodge the spikes.'],
+      ['frog', '🐸', 'Frog Hop', 'Hold to charge, release to leap from lily pad to lily pad.'],
+      ['color', '🎨', 'Color Match', 'Tap to bounce through spinning rings, but only through your own color.'],
+    ]],
+    ['Arcade Classics', [
+      ['pixel', '⬜', 'Pixel Defender', 'Arcade invaders: blast the marching polygon armada from behind your shields.'],
+      ['bricks', '🧱', 'Brick Breaker', 'Classic breakout with multi-ball, lasers and other power-ups.'],
+      ['pac', '👻', 'Pac-Horde', 'Maze chase: eat every dot, grab a power pellet and hunt the ghosts.'],
+      ['snake', '🐍', 'Snake Survivor', 'Slither arena: grow by eating, boost past rivals and make them crash into you.'],
+    ]],
+    ['Puzzle & Strategy', [
+      ['numbers', '🔢', 'Number Smasher', 'Swipe and merge matching numbers. Can you reach 2048?'],
+      ['lawnmower', '🌿', 'Lawnmower vs. Wild', 'Sliding puzzle: the mower rolls until it hits something. Mow every tile!'],
+      ['bee', '🐝', 'Bee Hive Hero', 'Match-3: swap flowers and honey, make striped bees and honey bombs.'],
+      ['garlic', '🧄', 'Vampire Garlic', 'Tower defense: plant garlic, holy water, stakes and sun lamps.'],
+      ['dice', '🎲', 'Dice Roller', 'The classic dice game: 13 rounds, 3 rolls each, fill your scorecard.'],
+    ]],
   ];
-  // Games already rebuilt as their own genre live in ../minis/ (the rest still use the horde engine).
-  const REMADE = {
-    grandma: ['Angry Grandma', 'Slingshot physics: fling Grandma\'s handbag and topple the pigeons\' towers.'],
-    numbers: ['Number Smasher', 'Swipe and merge matching numbers. Can you reach 2048?'],
-    cart: ['Shopping Cart Chaos', 'Endless supermarket runner: switch aisles, jump boxes, grab groceries.'],
-    chicken: ['Chicken Apocalypse', 'Hop across roads, rivers and railways. Don\'t let the fox catch you!'],
-    color: ['Color Match', 'Tap to bounce through spinning rings, but only through your own color.'],
-    lawnmower: ['Lawnmower vs. Wild', 'Sliding puzzle: the mower rolls until it hits something. Mow every tile!'],
-    garlic: ['Vampire Garlic', 'Tower defense: plant garlic, holy water, stakes and sun lamps to stop the vampire march.'],
-    bricks: ['Brick Breaker', 'Classic breakout with multi-ball, lasers and other power-ups.'],
-    pac: ['Pac-Horde', 'Maze chase: eat every dot, grab a power pellet and hunt the ghosts.'],
-    pixel: ['Pixel Defender', 'Arcade invaders: blast the marching polygon armada from behind your shields.'],
-    slipper: ['Slipper Thrower', '60-second shooting gallery: flick slippers at bugs, build combos, spare the cat.'],
-    snake: ['Snake Survivor', 'Slither arena: grow by eating, boost past rivals and make them crash into you.'],
-    bounce: ['Bounce Arena', 'Peg shooter: aim, fire and clear every orange peg with chain-reaction bounces.'],
-    cat: ['Catnip Rush', 'Vertical jumper: bounce up the living room on cushions and yarn springs.'],
-    bee: ['Bee Hive Hero', 'Match-3: swap flowers and honey, make striped bees and honey bombs.'],
-  };
-  let cat = null, grid = null, n = 0;
-  for (const id of Horde.order) {
-    const g = Horde.games[id];
-    if (g.cat !== cat) {
-      cat = g.cat;
-      const h = document.createElement('h2'); h.textContent = cat; main.appendChild(h);
-      grid = document.createElement('div'); grid.className = 'grid'; main.appendChild(grid);
-    }
-    n++;
-    const a = document.createElement('a');
-    a.className = 'game';
-    if (REMADE[id]) {
-      let best = null; try { best = JSON.parse(localStorage.getItem('mini-best-' + id)); } catch (e) { /* ignore */ }
-      a.href = '../minis/' + id + '.html';
-      a.innerHTML = '<span class="ic">' + g.icon + '</span><span class="info"><b><span class="num">' + n + '.</span>' + esc(REMADE[id][0]) + '</b><small>' + esc(REMADE[id][1]) + '</small>' +
-        (best != null ? '<span class="best">Best: ' + best + '</span>' : '') + '</span>';
-    } else {
-      const best = Horde.store.get('best-' + id, 0);
-      a.href = 'play.html?g=' + encodeURIComponent(id);
-      a.innerHTML = '<span class="ic">' + g.icon + '</span><span class="info"><b><span class="num">' + n + '.</span>' + esc(g.name) + '</b><small>' + esc(g.hook) + '</small>' +
-        (best ? '<span class="best">Best: ' + Horde.fmtTime(best) + '</span>' : '') + '</span>';
-    }
-    grid.appendChild(a);
-  }
   // Play-money casino: every game shares one fake-chips wallet.
   const CASINO = [
     ['index.html', '🎰', 'Casino Lobby', 'All casino games and your free play-money Chips wallet.'],
@@ -117,23 +90,32 @@
     ['wheel.html', '🎯', 'Money Wheel', 'Big Six wheel: bet on 1, 2, 5, 10, 20 or ★.'],
     ['dice.html', '🎲', 'Dice', 'Roll over or under your target.'],
   ];
-  const ch = document.createElement('h2'); ch.textContent = 'Casino · play money'; main.appendChild(ch);
-  grid = document.createElement('div'); grid.className = 'grid'; main.appendChild(grid);
-  for (const [file, icon, name, desc] of CASINO) {
-    const a = document.createElement('a');
-    a.className = 'game'; a.href = '../casino/' + file;
-    a.innerHTML = '<span class="ic">' + icon + '</span><span class="info"><b>' + esc(name) + '</b><small>' + esc(desc) + '</small></span>';
-    grid.appendChild(a);
-  }
-  const h = document.createElement('h2'); h.textContent = 'Console Classics'; main.appendChild(h);
-  grid = document.createElement('div'); grid.className = 'grid'; main.appendChild(grid);
-  for (const [view, icon, name, desc] of CLASSICS) {
-    n++;
-    const a = document.createElement('a');
-    a.className = 'game'; a.href = '../index.html#' + view;
-    a.innerHTML = '<span class="ic">' + icon + '</span><span class="info"><b><span class="num">' + n + '.</span>' + esc(name) + '</b><small>' + esc(desc) + '</small></span>';
-    grid.appendChild(a);
-  }
+  // Games that live inside the main console page; each opens straight into its module via a #hash link.
+  const CLASSICS = [
+    ['surv', '☣️', 'Load Test Sim', 'Survivor game: pick a difficulty and starting weapon, then level up, evolve weapons and beat the bosses.'],
+    ['snake', '🐍', 'Network Flow', 'Classic Snake. Steer the packet route, eat, grow, don\'t crash.'],
+    ['tetris', '🧱', 'DB Defragmenter', 'Classic falling-block puzzle with hold and hard drop.'],
+    ['flap', '➤', 'Packet Router', 'Flappy-style: tap to boost through firewall gaps and unlock builds.'],
+    ['shaft', '⇅', 'Stack Descent', 'Fall down a shaft and tap to flip sideways gravity through the gaps.'],
+    ['swing', '◎', 'Hook Swing', 'Swing from hooks: let go, fly, and grab the next one in reach.'],
+    ['worm', '〰️', 'Log Trail', 'Flappy flight where every orb grows a tail that can clip the gaps.'],
+    ['pulse', '◉', 'Shield Pulse', 'Hold to grow a shield and bounce incoming debris, without overheating.'],
+    ['idle', '⚙️', 'Task Automation', 'Idle clicker: deploy, automate and keep earning while you\'re away.'],
+  ];
+  const section = (title, items, href, numbered) => {
+    const h = document.createElement('h2'); h.textContent = title; main.appendChild(h);
+    const grid = document.createElement('div'); grid.className = 'grid'; main.appendChild(grid);
+    for (const [id, icon, name, desc] of items) {
+      const a = document.createElement('a'), b = numbered ? best(id) : null;
+      a.className = 'game'; a.href = href(id);
+      a.innerHTML = '<span class="ic">' + icon + '</span><span class="info"><b>' + esc(name) + '</b><small>' + esc(desc) + '</small>' +
+        (b != null ? '<span class="best">Best: ' + esc(b) + '</span>' : '') + '</span>';
+      grid.appendChild(a);
+    }
+  };
+  for (const [title, items] of GROUPS) section(title, items, (id) => '../minis/' + id + '.html', true);
+  section('Casino · play money', CASINO, (f) => '../casino/' + f, false);
+  section('Console Classics', CLASSICS, (v) => '../index.html#' + v, false);
 })();
 </script>
 </body>

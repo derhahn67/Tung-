@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Magnet Run</title>
+<script src="../cookies.js" defer></script>
+</head>
+<body>
+<script src="mini.js"></script>
+<script>
+(() => {
+  const ACC = 2600, R = 16;
+  const parts = Mini.particles();
+  let pl, floor, ceil, spikes, bolts, genX, dist, speed, nBolts, Fy, Cy, dead, trail;
+  function lanes(S) { const h = Math.min(S.bot - S.top - 160, 420); Cy = (S.top + S.bot) / 2 - h / 2; Fy = Cy + h; }
+  // Course pieces: wherever there is a gap on one rail, the other rail is solid, so a flip always saves you.
+  function gen() {
+    const d = Math.min(1, dist / 12000), L = Mini.rand(260, 520);
+    const r = Math.random(), x0 = genX, x1 = genX + L;
+    if (genX < 900 || r < 0.22) { floor.push([x0, x1]); ceil.push([x0, x1]); if (genX > 900 && Math.random() < 0.6) spikes.push({ x: x0 + Mini.rand(60, L - 140), w: Mini.rand(50, 90 + d * 60), side: Mini.pick(['f', 'c']) }); }
+    else if (r < 0.48) { const g = Mini.rand(90, 150 + d * 90); ceil.push([x0, x1]); floor.push([x0, x0 + (L - g) / 2], [x0 + (L + g) / 2, x1]); }
+    else if (r < 0.74) { const g = Mini.rand(90, 150 + d * 90); floor.push([x0, x1]); ceil.push([x0, x0 + (L - g) / 2], [x0 + (L + g) / 2, x1]); }
+    else {
+      floor.push([x0, x1]); ceil.push([x0, x1]);
+      // the gap must leave time to cross between rails (~0.6s) at the current speed
+      const w = Mini.rand(60, 100 + d * 50), gap = speed * 0.7 + Mini.rand(30, 90);
+      spikes.push({ x: x0 + 40, w, side: 'f' }, { x: x0 + 40 + w + gap, w, side: 'c' });
+      if (x0 + 40 + 2 * w + 2 * gap + w < x1) spikes.push({ x: x0 + 40 + 2 * (w + gap), w, side: 'f' });
+    }
+    for (let i = 0; i < 4; i++) if (Math.random() < 0.5) { const bx = x0 + Mini.rand(30, L - 30), side = Math.random() < 0.5 ? 'f' : 'c'; if (!spikes.some((s) => s.side === side && bx > s.x - 30 && bx < s.x + s.w + 30)) bolts.push({ x: bx, side }); }
+    genX = x1;
+  }
+  const on = (segs, x) => segs.some(([a, b]) => x >= a && x <= b);
+  function flip() { if (dead || !pl.grounded) return; pl.g = -pl.g; pl.grounded = false; Mini.sfx('jump'); }
+  function die(S, why) { if (dead) return; dead = true; Mini.sfx('hit'); parts.burst(S.W * 0.25, pl.y, '#ef5350', 30, 300, 6); S.over(Math.floor(dist / 10) + nBolts * 10, why, Math.floor(dist / 10) + ' m · 🔩 ' + nBolts); }
+  Mini.game({
+    id: 'magnet', title: 'Magnet Run', icon: '🧲',
+    tagline: 'A runaway magnet in a scrapyard. Flip your polarity to snap between floor and ceiling, dodging spikes and pits!',
+    how: '👆 Tap (or Space) to flip polarity: snap to the opposite rail.<br>⚠️ You can only flip while stuck to a rail.<br>🔩 Grab bolts for points. Avoid spikes and missing rails!',
+    init(S) { lanes(S); floor = []; ceil = []; spikes = []; bolts = []; genX = -200; dist = 0; speed = 260; nBolts = 0; dead = false; trail = []; pl = { y: Fy - R, vy: 0, g: 1, grounded: true }; parts.clear(); while (genX < 2000) gen(); },
+    resize(S) { if (pl) lanes(S); },
+    down() { flip(); },
+    key(code) { if (code === 'Space' || code === 'ArrowUp' || code === 'ArrowDown') flip(); },
+    update(dt, S) {
+      parts.update(dt);
+      if (dead) return;
+      speed = Math.min(560, speed + dt * 6);
+      dist += speed * dt;
+      while (genX < dist + S.W * 2) gen();
+      const wx = dist + S.W * 0.25;
+      pl.vy += pl.g * ACC * dt; pl.y += pl.vy * dt;
+      pl.grounded = false;
+      if (pl.g > 0 && pl.y + R >= Fy && pl.y + R - pl.vy * dt <= Fy + 6 && on(floor, wx)) { pl.y = Fy - R; pl.vy = 0; pl.grounded = true; }
+      if (pl.g < 0 && pl.y - R <= Cy && pl.y - R - pl.vy * dt >= Cy - 6 && on(ceil, wx)) { pl.y = Cy + R; pl.vy = 0; pl.grounded = true; }
+      if (pl.y > S.H + 60 || pl.y < -60) return die(S, 'LOST IN THE VOID!');
+      for (const s of spikes) if (wx + R * 0.6 > s.x && wx - R * 0.6 < s.x + s.w && ((s.side === 'f' && pl.y + R > Fy - 14) || (s.side === 'c' && pl.y - R < Cy + 14))) return die(S, 'SPIKED!');
+      for (const b of bolts) if (!b.got && Math.abs(b.x - wx) < 22 && Math.abs((b.side === 'f' ? Fy - 22 : Cy + 22) - pl.y) < 26) { b.got = true; nBolts++; Mini.sfx('coin'); parts.burst(S.W * 0.25, pl.y, '#cfd8dc', 8, 120, 3, 0); }
+      trail.push(pl.y); if (trail.length > 14) trail.shift();
+      const cut = dist - 300;
+      floor = floor.filter((s) => s[1] > cut); ceil = ceil.filter((s) => s[1] > cut); spikes = spikes.filter((s) => s.x + s.w > cut); bolts = bolts.filter((b) => b.x > cut && !b.got);
+    },
+    draw(ctx, S) {
+      ctx.fillStyle = '#263238'; ctx.fillRect(0, 0, S.W, S.H);
+      if (!pl) return;
+      const off = dist * 0.3 % 120;
+      ctx.fillStyle = 'rgba(255,255,255,.04)'; for (let x = -off; x < S.W; x += 120) ctx.fillRect(x, 0, 60, S.H);
+      const sx = (x) => x - dist;
+      const rail = (segs, y, up) => {
+        for (const [a, b] of segs) {
+          const x0 = sx(a), x1 = sx(b); if (x1 < -20 || x0 > S.W + 20) continue;
+          ctx.fillStyle = '#78909c'; ctx.fillRect(x0, up ? y - 18 : y, x1 - x0, 18);
+          ctx.fillStyle = '#b0bec5'; ctx.fillRect(x0, up ? y - 4 : y, x1 - x0, 4);
+          ctx.fillStyle = '#546e7a'; for (let x = Math.ceil(a / 40) * 40; x < b; x += 40) ctx.fillRect(sx(x), up ? y - 14 : y + 6, 3, 8);
+        }
+      };
+      rail(floor, Fy, false); rail(ceil, Cy, true);
+      ctx.fillStyle = '#ef5350';
+      for (const s of spikes) {
+        const x0 = sx(s.x); if (x0 > S.W || x0 + s.w < 0) continue;
+        const n = Math.max(2, Math.round(s.w / 16)), w = s.w / n;
+        for (let i = 0; i < n; i++) { ctx.beginPath(); if (s.side === 'f') { ctx.moveTo(x0 + i * w, Fy); ctx.lineTo(x0 + i * w + w / 2, Fy - 16); ctx.lineTo(x0 + (i + 1) * w, Fy); } else { ctx.moveTo(x0 + i * w, Cy); ctx.lineTo(x0 + i * w + w / 2, Cy + 16); ctx.lineTo(x0 + (i + 1) * w, Cy); } ctx.fill(); }
+      }
+      for (const b of bolts) Mini.emoji(ctx, '🔩', sx(b.x), b.side === 'f' ? Fy - 22 : Cy + 22, 22, S.time * 3);
+      const px = S.W * 0.25;
+      trail.forEach((y, i) => { ctx.globalAlpha = i / trail.length * 0.4; ctx.fillStyle = pl.g > 0 ? '#ef5350' : '#42a5f5'; ctx.beginPath(); ctx.arc(px - (trail.length - i) * 5, y, R * 0.6, 0, Mini.TAU); ctx.fill(); });
+      ctx.globalAlpha = 1;
+      if (!dead) {
+        ctx.save(); ctx.translate(px, pl.y); ctx.rotate(pl.g > 0 ? 0 : Math.PI);
+        ctx.lineWidth = 10; ctx.strokeStyle = pl.g > 0 ? '#e53935' : '#1e88e5';
+        ctx.beginPath(); ctx.arc(0, -2, 11, Math.PI, 0, true); ctx.stroke();
+        ctx.strokeStyle = '#eceff1'; ctx.beginPath(); ctx.moveTo(-11, -2); ctx.lineTo(-11, 10); ctx.moveTo(11, -2); ctx.lineTo(11, 10); ctx.stroke();
+        ctx.restore();
+      }
+      parts.draw(ctx);
+      const top = S.top + 14;
+      Mini.text(ctx, Math.floor(dist / 10) + ' m', S.W / 2, top + 20, 26, '#fff');
+      Mini.text(ctx, '🔩 ' + nBolts, 14, top + 20, 18, '#fff', 'left');
+    },
+  });
+})();
+</script>
+</body>
+</html>
