@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Video Poker · Play-Money Casino</title>
+<link rel="stylesheet" href="casino.css">
+<style>
+  :root { --cw: 70px; }
+  @media (max-width: 420px) { :root { --cw: 58px; } }
+  .pay { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .pay td { padding: 4px 8px; border-bottom: 1px solid var(--line); }
+  .pay td:last-child { text-align: right; color: var(--gold); font-weight: 800; }
+  .pay tr.hit td { background: rgba(255,213,79,.25); }
+  #hand .card { cursor: pointer; transition: transform .12s; }
+  .holdtag { text-align: center; font-size: 12px; font-weight: 800; color: var(--gold); height: 16px; }
+  .slot { display: flex; flex-direction: column; gap: 4px; }
+</style>
+<script src="../cookies.js" defer></script>
+</head>
+<body>
+<script src="casino.js"></script>
+<script>Casino.header('Video Poker', '🎴');</script>
+<div class="wrap">
+  <div class="panel"><table class="pay" id="pay"></table></div>
+  <div class="panel" style="margin-top:12px">
+    <div class="msg" id="msg">Jacks or Better: place a bet and deal</div>
+    <div class="row" id="hand" style="gap:6px"></div>
+    <p class="muted center">Tap cards to HOLD them, then Draw to replace the rest.</p>
+  </div>
+  <div class="panel col" style="margin-top:12px">
+    <div id="bet"></div>
+    <div class="row"><button class="btn gold" id="go">Deal</button></div>
+  </div>
+  <p class="disclaimer">Payouts are total return per chip bet (9/6 Jacks or Better). Play money only.</p>
+</div>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const PAY = [['Royal Flush', 250], ['Straight Flush', 50], ['Four of a Kind', 25], ['Full House', 9], ['Flush', 6], ['Straight', 4], ['Three of a Kind', 3], ['Two Pair', 2], ['Jacks or Better', 1]];
+  $('pay').innerHTML = PAY.map(([n, m]) => '<tr data-n="' + n + '"><td>' + n + '</td><td>×' + m + '</td></tr>').join('');
+  const bet = Casino.betBox($('bet'), { key: 'vp', init: 25 });
+  let deck, hand = [], held = [false, false, false, false, false], phase = 'bet', stake = 0;
+  function handName(cs) {
+    const e = Casino.evalHand(cs);
+    if (e.cat >= 2) return e.name;
+    if (e.cat === 1) {
+      const cnt = {}; cs.forEach((c) => { cnt[c.r] = (cnt[c.r] || 0) + 1; });
+      const pr = +Object.keys(cnt).find((r) => cnt[r] === 2);
+      return pr >= 11 ? 'Jacks or Better' : null;
+    }
+    return null;
+  }
+  function render(showName) {
+    const H = $('hand'); H.innerHTML = '';
+    hand.forEach((c, i) => {
+      const slot = document.createElement('div'); slot.className = 'slot';
+      const tag = document.createElement('div'); tag.className = 'holdtag'; tag.textContent = held[i] ? 'HELD' : '';
+      const el = Casino.cardEl(c); if (held[i]) el.classList.add('held');
+      el.onclick = () => { if (phase !== 'draw') return; held[i] = !held[i]; Casino.sfx('tick'); render(true); };
+      slot.append(tag, el); H.appendChild(slot);
+    });
+    const n = showName && hand.length ? handName(hand) : null;
+    document.querySelectorAll('#pay tr').forEach((tr) => tr.classList.toggle('hit', tr.dataset.n === n));
+    return n;
+  }
+  function msg(t, cls) { const m = $('msg'); m.textContent = t; m.className = 'msg' + (cls ? ' ' + cls : ''); }
+  $('go').onclick = () => {
+    if (phase === 'bet') {
+      if (!Casino.bet(bet.value)) return;
+      stake = bet.value; deck = Casino.newDeck(); hand = deck.splice(0, 5); held = [false, false, false, false, false];
+      phase = 'draw'; bet.disable(true); $('go').textContent = 'Draw';
+      const n = render(true); msg(n ? n + '! Hold your cards' : 'Choose cards to hold');
+      Casino.sfx('card');
+    } else {
+      hand = hand.map((c, i) => (held[i] ? c : deck.pop()));
+      held = [false, false, false, false, false];
+      const n = render(true);
+      const mult = n ? PAY.find((p) => p[0] === n)[1] : 0;
+      if (mult) { Casino.pay(stake * mult, stake); msg(mult === 1 ? n + ': bet returned' : n + '! +' + Casino.fmt(stake * mult - stake), 'win'); Casino.sfx(mult >= 25 ? 'big' : 'win'); }
+      else { msg('No win. Deal again', 'lose'); Casino.sfx('lose'); }
+      phase = 'bet'; bet.disable(false); $('go').textContent = 'Deal';
+    }
+  };
+})();
+</script>
+</body>
+</html>

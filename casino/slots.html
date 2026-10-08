@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Lucky Slots · Play-Money Casino</title>
+<link rel="stylesheet" href="casino.css">
+<style>
+  .machine { background: linear-gradient(#7b1fa2, #4a148c); border: 4px solid var(--gold); border-radius: 22px; padding: 14px; max-width: 380px; margin: 0 auto; box-shadow: 0 10px 30px rgba(0,0,0,.5); }
+  .reels { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; background: #1a0730; padding: 8px; border-radius: 14px; }
+  .reel { display: grid; grid-template-rows: repeat(3, 1fr); gap: 6px; }
+  .sym { background: #fff; border-radius: 10px; height: 78px; display: flex; align-items: center; justify-content: center; font-size: 44px; transition: background .2s; }
+  .sym.spin { filter: blur(1.5px); }
+  .sym.win { background: #ffe082; animation: pulse .6s infinite alternate; }
+  @keyframes pulse { to { transform: scale(1.06); } }
+  .title { text-align: center; font-weight: 900; font-size: 24px; color: var(--gold); letter-spacing: 2px; margin-bottom: 8px; text-shadow: 0 2px 0 #000; }
+  .pay { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px 14px; font-size: 14px; }
+  .pay div { display: flex; justify-content: space-between; } .pay b { color: var(--gold); }
+</style>
+<script src="../cookies.js" defer></script>
+</head>
+<body>
+<script src="casino.js"></script>
+<script>Casino.header('Lucky Slots', '🎰');</script>
+<div class="wrap">
+  <div class="machine">
+    <div class="title">★ LUCKY 7 ★</div>
+    <div class="reels" id="reels"></div>
+    <div class="msg" id="msg">5 lines · good luck!</div>
+  </div>
+  <div class="panel col" style="margin-top:12px">
+    <div id="bet"></div>
+    <div class="row"><button class="btn gold" id="spin" style="min-width:160px">SPIN</button><button class="btn" id="auto">Auto ×10</button></div>
+  </div>
+  <div class="panel" style="margin-top:12px">
+    <div class="label center" style="margin-bottom:8px">Pays per line (bet ÷ 5) · 3 in a row</div>
+    <div class="pay" id="pay"></div>
+    <p class="muted center">Lines: the 3 rows + 2 diagonals. 🍒🍒 on the first two reels pays ×4, a single 🍒 on reel 1 pays ×1.</p>
+  </div>
+  <p class="disclaimer">Play money only. Long-run return about 94%.</p>
+</div>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const SYM = ['🍒', '🍋', '🍊', '🍇', '🔔', '⭐', '💎', '7️⃣'], W = [8, 7, 6, 5, 4, 3, 2, 1], PAY = [10, 15, 22, 32, 55, 110, 280, 1100];
+  const TOT = W.reduce((a, b) => a + b, 0);
+  const LINES = [[[0, 0], [1, 0], [2, 0]], [[0, 1], [1, 1], [2, 1]], [[0, 2], [1, 2], [2, 2]], [[0, 0], [1, 1], [2, 2]], [[0, 2], [1, 1], [2, 0]]];
+  $('pay').innerHTML = SYM.map((s, i) => '<div><span>' + s + s + s + '</span><b>×' + PAY[i] + '</b></div>').slice().reverse().join('');
+  const bet = Casino.betBox($('bet'), { key: 'slots', init: 25, steps: [5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000] });
+  const pick = () => { let r = Math.random() * TOT; for (let i = 0; i < W.length; i++) { r -= W[i]; if (r < 0) return i; } return 0; };
+  const R = $('reels'), cells = [];
+  for (let c = 0; c < 3; c++) {
+    const col = document.createElement('div'); col.className = 'reel'; cells.push([]);
+    for (let r = 0; r < 3; r++) { const s = document.createElement('div'); s.className = 'sym'; s.textContent = SYM[pick()]; col.appendChild(s); cells[c].push(s); }
+    R.appendChild(col);
+  }
+  let busy = false, autoLeft = 0;
+  function msg(t, cls) { const m = $('msg'); m.textContent = t; m.className = 'msg' + (cls ? ' ' + cls : ''); }
+  async function spin() {
+    if (busy) return false;
+    const b = bet.value;
+    if (!Casino.bet(b)) { autoLeft = 0; return false; }
+    busy = true; bet.disable(true); msg('');
+    cells.flat().forEach((s) => s.classList.remove('win'));
+    const grid = [0, 1, 2].map(() => [pick(), pick(), pick()]);
+    await Promise.all([0, 1, 2].map(async (c) => {
+      const end = performance.now() + 600 + c * 350;
+      while (performance.now() < end) { cells[c].forEach((s) => { s.textContent = SYM[Casino.rand(SYM.length)]; s.classList.add('spin'); }); Casino.sfx('tick'); await Casino.sleep(70); }
+      cells[c].forEach((s, r) => { s.textContent = SYM[grid[c][r]]; s.classList.remove('spin'); });
+      Casino.sfx('card');
+    }));
+    const lineBet = b / 5;
+    let win = 0;
+    for (const L of LINES) {
+      const v = L.map(([c, r]) => grid[c][r]);
+      let m = 0;
+      if (v[0] === v[1] && v[1] === v[2]) m = PAY[v[0]];
+      else if (v[0] === 0 && v[1] === 0) m = 4;
+      else if (v[0] === 0) m = 1;
+      if (m) { win += lineBet * m; (v[0] === v[1] && v[1] === v[2] ? L : v[1] === 0 ? L.slice(0, 2) : L.slice(0, 1)).forEach(([c, r]) => cells[c][r].classList.add('win')); }
+    }
+    win = Math.floor(win);
+    if (win > 0) { Casino.pay(win, b); msg(win >= b * 20 ? '💥 BIG WIN +' + Casino.fmt(win) : 'Win ' + Casino.fmt(win), 'win'); Casino.sfx(win >= b * 20 ? 'big' : 'win'); }
+    else msg('No win this time');
+    busy = false; bet.disable(false);
+    return true;
+  }
+  $('spin').onclick = () => { autoLeft = 0; spin(); };
+  $('auto').onclick = async () => {
+    if (busy) return;
+    autoLeft = 10;
+    while (autoLeft > 0) { autoLeft--; $('auto').textContent = 'Auto (' + autoLeft + ')'; if (!(await spin())) break; await Casino.sleep(500); }
+    autoLeft = 0; $('auto').textContent = 'Auto ×10';
+  };
+})();
+</script>
+</body>
+</html>

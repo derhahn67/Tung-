@@ -29,12 +29,13 @@
   .best { color: var(--accent); font-size: 12px; font-weight: 600; }
   .num { color: var(--dim); font-size: 12px; font-weight: 600; margin-right: 4px; }
 </style>
+<script src="../cookies.js" defer></script>
 </head>
 <body>
 <header>
   <h1>🕹️ All <span>Games</span></h1>
   <a href="../index.html">← Back to console</a>
-  <p>Every game in one place: 20 bite-sized horde-survival games plus the 9 console classics. Works on phone and desktop. Pick one and play.</p>
+  <p>Every game in one place: 20 horde-survival games, a play-money casino and the 9 console classics. Works on phone and desktop. Pick one and play.</p>
 </header>
 <main id="list"></main>
 <script src="engine.js"></script>
@@ -72,6 +73,30 @@
     a.className = 'game'; a.href = 'play.html?g=' + encodeURIComponent(id);
     a.innerHTML = '<span class="ic">' + g.icon + '</span><span class="info"><b><span class="num">' + n + '.</span>' + esc(g.name) + '</b><small>' + esc(g.hook) + '</small>' +
       (best ? '<span class="best">Best: ' + Horde.fmtTime(best) + '</span>' : '') + '</span>';
+    grid.appendChild(a);
+  }
+  // Play-money casino: every game shares one fake-chips wallet.
+  const CASINO = [
+    ['index.html', '🎰', 'Casino Lobby', 'All casino games and your free play-money Chips wallet.'],
+    ['blackjack.html', '🃏', 'Blackjack', 'Beat the dealer to 21. Double and split.'],
+    ['holdem.html', '♠️', "Texas Hold'em", 'No-limit poker vs 3 computer players.'],
+    ['videopoker.html', '🎴', 'Video Poker', 'Jacks or Better: hold, draw, hit a Royal.'],
+    ['baccarat.html', '💎', 'Baccarat', 'Player, Banker or Tie: closest to 9 wins.'],
+    ['roulette.html', '🎡', 'Roulette', 'European wheel: numbers, colours, dozens.'],
+    ['slots.html', '🎰', 'Lucky Slots', '3 reels, 5 lines, big 7️⃣ jackpot.'],
+    ['crash.html', '🚀', 'Crash Rocket', 'Cash out before the rocket blows up.'],
+    ['mines.html', '💣', 'Mines', 'Find gems on a 5×5 grid, dodge the mines.'],
+    ['plinko.html', '🔻', 'Plinko', 'Drop balls through pegs into multipliers.'],
+    ['hilo.html', '⬆️', 'Hi-Lo', 'Higher or lower? Build a streak, cash out.'],
+    ['wheel.html', '🎯', 'Money Wheel', 'Big Six wheel: bet on 1, 2, 5, 10, 20 or ★.'],
+    ['dice.html', '🎲', 'Dice', 'Roll over or under your target.'],
+  ];
+  const ch = document.createElement('h2'); ch.textContent = 'Casino · play money'; main.appendChild(ch);
+  grid = document.createElement('div'); grid.className = 'grid'; main.appendChild(grid);
+  for (const [file, icon, name, desc] of CASINO) {
+    const a = document.createElement('a');
+    a.className = 'game'; a.href = '../casino/' + file;
+    a.innerHTML = '<span class="ic">' + icon + '</span><span class="info"><b>' + esc(name) + '</b><small>' + esc(desc) + '</small></span>';
     grid.appendChild(a);
   }
   const h = document.createElement('h2'); h.textContent = 'Console Classics'; main.appendChild(h);

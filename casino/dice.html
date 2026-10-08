@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Dice · Play-Money Casino</title>
+<link rel="stylesheet" href="casino.css">
+<style>
+  .roll { text-align: center; font-size: 64px; font-weight: 900; font-variant-numeric: tabular-nums; }
+  .track { position: relative; height: 14px; border-radius: 7px; margin: 18px 6px 6px; }
+  .marker { position: absolute; top: -26px; transform: translateX(-50%); font-weight: 900; font-size: 13px; background: #fff; color: #000; border-radius: 6px; padding: 1px 6px; transition: left .35s; }
+  input[type=range] { width: 100%; }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; text-align: center; }
+  .stats b { display: block; font-size: 20px; color: var(--gold); }
+</style>
+<script src="../cookies.js" defer></script>
+</head>
+<body>
+<script src="casino.js"></script>
+<script>Casino.header('Dice', '🎲');</script>
+<div class="wrap">
+  <div class="panel col">
+    <div class="roll" id="roll">50.00</div>
+    <div class="track" id="track"><span class="marker" id="marker" style="left:50%;display:none"></span></div>
+    <input type="range" id="target" min="2" max="98" value="50">
+    <div class="row"><button class="btn small" id="flip">Roll <span id="dir">UNDER</span> ⇄</button></div>
+    <div class="stats"><div><span class="label">Target</span><b id="tgt">50</b></div><div><span class="label">Win chance</span><b id="ch">50%</b></div><div><span class="label">Payout</span><b id="px">×1.94</b></div></div>
+    <div class="msg" id="msg">Pick a target and roll</div>
+  </div>
+  <div class="panel col" style="margin-top:12px">
+    <div id="bet"></div>
+    <div class="row"><button class="btn gold" id="go" style="min-width:200px">Roll</button></div>
+  </div>
+  <p class="disclaimer">Rolls a number from 0.00 to 99.99. Lower chance means a bigger payout (97% return). Play money only.</p>
+</div>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const bet = Casino.betBox($('bet'), { key: 'dice', init: 50 });
+  let under = true, busy = false;
+  const chance = () => { const t = +$('target').value; return under ? t : 100 - t; };
+  const payout = () => 97 / chance();
+  function upd() {
+    const t = +$('target').value, c = chance();
+    $('tgt').textContent = t; $('ch').textContent = c + '%'; $('px').textContent = '×' + payout().toFixed(2); $('dir').textContent = under ? 'UNDER' : 'OVER';
+    $('track').style.background = under ? 'linear-gradient(90deg,#43a047 ' + t + '%,#e53935 ' + t + '%)' : 'linear-gradient(90deg,#e53935 ' + t + '%,#43a047 ' + t + '%)';
+  }
+  $('target').oninput = upd;
+  $('flip').onclick = () => { under = !under; upd(); };
+  upd();
+  function msg(t, cls) { const m = $('msg'); m.textContent = t; m.className = 'msg' + (cls ? ' ' + cls : ''); }
+  $('go').onclick = async () => {
+    if (busy || !Casino.bet(bet.value)) return;
+    busy = true; const stake = bet.value, t = +$('target').value, px = payout();
+    const r = Casino.rand(10000) / 100;
+    for (let i = 0; i < 12; i++) { $('roll').textContent = (Casino.rand(10000) / 100).toFixed(2); Casino.sfx('tick'); await Casino.sleep(45); }
+    $('roll').textContent = r.toFixed(2);
+    const mk = $('marker'); mk.style.display = 'block'; mk.style.left = r + '%'; mk.textContent = r.toFixed(2);
+    const win = under ? r < t : r >= t;
+    $('roll').style.color = win ? '#69f0ae' : '#ff8a80';
+    if (win) { const w = Math.floor(stake * px); Casino.pay(w, stake); msg('Win +' + Casino.fmt(w - stake), 'win'); Casino.sfx('win'); }
+    else { msg('Lost 🪙 ' + Casino.fmt(stake), 'lose'); Casino.sfx('lose'); }
+    busy = false;
+  };
+})();
+</script>
+</body>
+</html>

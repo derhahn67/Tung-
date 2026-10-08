@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Plinko · Play-Money Casino</title>
+<link rel="stylesheet" href="casino.css">
+<style>
+  canvas { width: 100%; max-width: 520px; display: block; margin: 0 auto; aspect-ratio: 1 / 0.92; }
+  .risk { display: flex; gap: 6px; justify-content: center; }
+</style>
+<script src="../cookies.js" defer></script>
+</head>
+<body>
+<script src="casino.js"></script>
+<script>Casino.header('Plinko', '🔻');</script>
+<div class="wrap">
+  <div class="panel col">
+    <canvas id="cv"></canvas>
+    <div class="msg" id="msg">Drop balls and watch them bounce</div>
+  </div>
+  <div class="panel col" style="margin-top:12px">
+    <div id="bet"></div>
+    <div class="risk" id="risk"><span class="label" style="align-self:center">Risk</span></div>
+    <div class="row"><button class="btn gold" id="drop" style="min-width:200px">Drop ball</button></div>
+  </div>
+  <p class="disclaimer">12 rows. Each ball takes a random left/right bounce at every peg (about 99% return). Play money only.</p>
+</div>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const ROWS = 12;
+  const TABLES = { low: [10, 3, 1.6, 1.4, 1.1, 1, 0.5, 1, 1.1, 1.4, 1.6, 3, 10], medium: [33, 11, 4, 2, 1.1, 0.6, 0.3, 0.6, 1.1, 2, 4, 11, 33], high: [170, 24, 8.1, 2, 0.7, 0.2, 0.2, 0.2, 0.7, 2, 8.1, 24, 170] };
+  const bet = Casino.betBox($('bet'), { key: 'plinko', init: 10 });
+  let risk = 'medium', balls = [], flash = {};
+  try { risk = localStorage.getItem('casino-plinko-risk') || 'medium'; } catch (e) { /* ignore */ }
+  const RB = $('risk');
+  for (const r of ['low', 'medium', 'high']) {
+    const b = document.createElement('button'); b.className = 'btn small' + (r === risk ? ' on' : ''); b.textContent = r[0].toUpperCase() + r.slice(1);
+    b.onclick = () => { if (balls.length) return Casino.toast('Wait for your balls to land'); risk = r; try { localStorage.setItem('casino-plinko-risk', r); } catch (e) { /* ignore */ } RB.querySelectorAll('.btn').forEach((x) => x.classList.toggle('on', x === b)); };
+    RB.appendChild(b);
+  }
+  const cv = $('cv'), ctx = cv.getContext('2d');
+  let W = 0, H = 0;
+  function fit() { const d = Math.min(2, devicePixelRatio || 1); W = cv.clientWidth; H = cv.clientHeight; cv.width = W * d; cv.height = H * d; ctx.setTransform(d, 0, 0, d, 0, 0); }
+  window.addEventListener('resize', fit); fit();
+  const gap = () => W / (ROWS + 3), top = () => gap() * 1.2;
+  const peg = (row, i) => [W / 2 + (i - row / 2) * gap(), top() + row * gap() * 0.92];
+  const slotX = (k) => W / 2 + (k - ROWS / 2) * gap();
+  const color = (m) => (m >= 10 ? '#ff1744' : m >= 3 ? '#ff7043' : m >= 1.5 ? '#ffa726' : m >= 1 ? '#ffd54f' : '#90a4ae');
+  function msg(t, cls) { const m = $('msg'); m.textContent = t; m.className = 'msg' + (cls ? ' ' + cls : ''); }
+  function draw(now) {
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = '#fff';
+    for (let r = 1; r <= ROWS; r++) for (let i = 0; i <= r; i++) { const [x, y] = peg(r, i); ctx.beginPath(); ctx.arc(x, y, Math.max(2.5, gap() * 0.09), 0, Math.PI * 2); ctx.fill(); }
+    const T = TABLES[risk], sy = top() + (ROWS + 0.8) * gap() * 0.92, bw = gap() * 0.92;
+    T.forEach((m, k) => {
+      const x = slotX(k), lit = flash[k] && now - flash[k] < 400;
+      ctx.fillStyle = color(m); ctx.globalAlpha = lit ? 1 : 0.85;
+      ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x - bw / 2, sy - (lit ? 4 : 0), bw, gap() * 0.8, 5) : ctx.rect(x - bw / 2, sy, bw, gap() * 0.8); ctx.fill();
+      ctx.globalAlpha = 1; ctx.fillStyle = '#1b1b1b'; ctx.font = 'bold ' + Math.max(8, Math.floor(gap() * 0.3)) + 'px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(m + '×', x, sy + gap() * 0.4 - (lit ? 4 : 0));
+    });
+    for (const b of balls) {
+      const step = Math.min(ROWS, (now - b.t0) / 140), i = Math.floor(step), f = step - i;
+      const a = b.pts[i], c = b.pts[Math.min(i + 1, b.pts.length - 1)];
+      const x = a[0] + (c[0] - a[0]) * f, y = a[1] + (c[1] - a[1]) * f - Math.sin(f * Math.PI) * gap() * 0.35;
+      ctx.fillStyle = '#ff4081'; ctx.beginPath(); ctx.arc(x, y, Math.max(4, gap() * 0.2), 0, Math.PI * 2); ctx.fill();
+    }
+  }
+  function loop(now) {
+    for (let i = balls.length - 1; i >= 0; i--) {
+      const b = balls[i];
+      if ((now - b.t0) / 140 >= ROWS + 1) {
+        balls.splice(i, 1);
+        const m = TABLES[b.risk][b.slot], win = Math.floor(b.stake * m);
+        flash[b.slot] = now;
+        if (win > 0) Casino.pay(win, b.stake);
+        msg(m + '× → 🪙 ' + Casino.fmt(win), win > b.stake ? 'win' : win < b.stake ? 'lose' : '');
+        Casino.sfx(m >= 10 ? 'big' : win > b.stake ? 'win' : 'tick');
+      }
+    }
+    draw(now);
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+  $('drop').onclick = () => {
+    if (balls.length >= 15) return;
+    if (!Casino.bet(bet.value)) return;
+    let k = 0; const pts = [[W / 2, top() - gap() * 0.8]];
+    for (let r = 1; r <= ROWS; r++) { const [x, y] = peg(r, k + 0.5); pts.push([x, y - gap() * 0.3]); if (Math.random() < 0.5) k++; }
+    pts.push([slotX(k), top() + (ROWS + 0.8) * gap() * 0.92]);
+    balls.push({ t0: performance.now(), pts, slot: k, stake: bet.value, risk });
+  };
+})();
+</script>
+</body>
+</html>
