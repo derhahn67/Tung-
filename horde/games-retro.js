@@ -382,13 +382,13 @@ const ghost = (color) => (ctx, e, G) => {
 Horde.register({
   id: 'pac', cat: CAT, name: 'Pac-Horde', icon: '👻',
   hook: 'The hunted becomes the hunter. Hundreds of ghosts pour in from the edges. Gobble dots to power up a Chomp Mode that disintegrates them on contact.',
-  how: 'Drag anywhere to move. Every <b>10 dots</b> triggers Chomp Mode: ghosts flee and you eat them on touch. Grab 🍒 for a screen wipe.',
+  how: 'Drag anywhere to move. Every <b>8 dots</b> triggers Chomp Mode: ghosts flee and you eat them on touch. Grab 🍒 for a screen wipe.',
   bg: '#000', xpColor: '#ff80ab', killWord: 'ghosts chomped', overText: 'GAME OVER',
   player: { r: 14, hp: 100, speed: 165 },
   noGeneric: ['dmg'],
   spawn: { base: 1.6, cap: 340, max: 18, waveText: 'GHOST STAMPEDE!' },
   hpScale: () => 1,
-  stats: { need: 10, chomp: 4, dotMag: 6, cherry: 0, chain: 0 },
+  stats: { need: 8, chomp: 4.5, dotMag: 6, cherry: 0, chain: 0 },
   enemies: [
     { id: 'blinky', r: 12, hp: 1, speed: 62, dmg: 10, xp: 1, w: 6, color: '#ff1744', draw: ghost('#ff1744') },
     { id: 'pinky', r: 12, hp: 1, speed: 55, dmg: 10, xp: 1, w: 6, beh: 'zigzag', color: '#ff80ab', draw: ghost('#ff80ab') },
@@ -405,7 +405,7 @@ Horde.register({
   ],
   init(G) {
     G.dots = []; G.dc = 0; G.cherries = []; G.tm.chompT = 0;
-    for (let i = 0; i < 45; i++) G.dots.push(dotSpot(G));
+    for (let i = 0; i < 60; i++) G.dots.push(dotSpot(G));
   },
   onContact(G, e) {
     if (G.tm.chompT > 0) {

@@ -192,7 +192,7 @@ const API = {
       return;
     }
     p.hp -= dmg;
-    if (!force) p.invuln = 0.55;
+    if (!force) p.invuln = 0.8;
     G.shake = Math.max(G.shake, 7); G.hurtFlash = 0.3; sfx('hurt');
     if (def.onHurt) def.onHurt(G, dmg);
     if (p.hp <= 0) { p.hp = 0; gameOver(); }
@@ -285,13 +285,13 @@ function chooseType() {
 function spawnEnemy(T, x, y, elite) {
   if (x == null) [x, y] = edgePos(T.r * 2 + 10);
   const t = G.time;
-  const hpMul = def.hpScale ? def.hpScale(t) : 1 + t / 50 + Math.pow(t / 180, 2);
+  const hpMul = def.hpScale ? def.hpScale(t) : 1 + t / 70 + Math.pow(t / 200, 2);
   let hp = (def.enemyHp ? def.enemyHp(G, T) : T.hp * hpMul) * (elite ? 14 : 1);
   if (elite && def.enemyHp) hp = Math.ceil(hp * 0.6);
   const e = {
     type: T, x, y, r: T.r * (elite ? 1.7 : 1), hp, maxHp: hp,
     speed: T.speed * rand(0.88, 1.12) * (1 + Math.min(0.45, t / 500)) * (elite ? 0.8 : 1),
-    dmg: (T.dmg || 10) * (elite ? 1.6 : 1), xp: (T.xp || 1) * (elite ? 15 : 1),
+    dmg: (T.dmg || 10) * 0.7 * (elite ? 1.6 : 1), xp: (T.xp || 1) * (elite ? 15 : 1),
     kx: 0, ky: 0, slowT: 0, slowF: 1, flash: 0, elite: !!elite, beh: T.beh || 'chase',
     ph: Math.random() * TAU, cd: rand(0.5, 2.5), st: 0, stT: 0, dx: 0, dy: 0, color: T.color, face: 1,
   };
@@ -301,7 +301,7 @@ function spawnEnemy(T, x, y, elite) {
 }
 function spawnTick(dt) {
   const sp = def.spawn || {}, t = G.time;
-  const rate = Math.min(sp.max || 14, (sp.base || 1) * (1 + t / 22) * (sp.mul || 1));
+  const rate = Math.min(sp.max || 14, (sp.base || 1) * (0.55 + t / 28) * (sp.mul || 1));
   G.spawnAcc += rate * dt;
   const cap = sp.cap || 260;
   while (G.spawnAcc >= 1) { G.spawnAcc--; if (G.enemies.length < cap) spawnEnemy(chooseType()); }
@@ -642,7 +642,7 @@ function drawFx(f) {
 }
 function drawPlayer() {
   const p = G.p;
-  if (p.invuln > 0 && p.invuln < 0.55 && Math.floor(G.time * 20) % 2) ctx.globalAlpha = 0.45;
+  if (p.invuln > 0 && Math.floor(G.time * 20) % 2) ctx.globalAlpha = 0.45;
   if (def.player.draw) def.player.draw(ctx, G, p);
   else drawEmoji(ctx, def.player.emoji, p.x, p.y, def.player.size || p.r * 2.4, def.player.faceLeft ? p.face > 0 : false, p.moving ? Math.sin(G.time * 16) * 0.08 : 0);
   ctx.globalAlpha = 1;
@@ -773,7 +773,7 @@ function newGame() {
   G = Object.assign({
     def, w: W, h: H, top: safeT, bot: H - safeB, time: 0, dt: 0, state: 'start', level: 1, xp: 0, xpNext: def.xpStart || 5, pending: 0,
     kills: 0, enemies: [], bullets: [], zones: [], gems: [], fx: [], parts: [], floats: [], tm: {}, up: {},
-    s: JSON.parse(JSON.stringify(def.stats || {})), spawnAcc: 0, nextWave: 30, nextElite: 55, shake: 0, dmgMul: 1, xpMul: 1,
+    s: JSON.parse(JSON.stringify(def.stats || {})), spawnAcc: 0, nextWave: 45, nextElite: 70, shake: 0, dmgMul: 1, xpMul: 1,
     flee: false, regen: 0, hurtFlash: 0, ban: null,
   }, API);
   G.p = {

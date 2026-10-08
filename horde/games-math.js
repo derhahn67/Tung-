@@ -30,8 +30,8 @@ Horde.register({
   player: { r: 18, hp: 40, speed: 150 },
   noGeneric: ['dmg'],
   genericNames: { vit: { name: 'Bigger Number', icon: '➕', desc: '+20 to your max value and heal 20' } },
-  enemyHp: (G) => { const t = G.time; return randInt(1 + Math.floor(t / 15), Math.floor(Math.min(50, 8 + t / 4) + Math.max(0, (t - 180) / 3))); },
-  stats: { rate: 0.22, multi: 1, pierce: 0, dmg: 1, freeze: 0, divide: 0, shot: 440 },
+  enemyHp: (G) => { const t = G.time; return randInt(1 + Math.floor(t / 20), Math.floor(Math.min(50, 6 + t / 6) + Math.max(0, (t - 240) / 4))); },
+  stats: { rate: 0.15, multi: 1, pierce: 0, dmg: 1, freeze: 0, divide: 0, shot: 440 },
   enemies: [
     { id: 'n', r: 12, hp: 1, speed: 52, dmg: 3, xp: 1, w: 10, color: '#7986cb', draw: numDraw, init: numInit },
     { id: 'fast', r: 12, hp: 1, speed: 80, dmg: 3, xp: 1, w: 4, from: 30, beh: 'zigzag', color: '#4db6ac', draw: numDraw, init: numInit },

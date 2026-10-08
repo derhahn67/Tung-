@@ -174,9 +174,9 @@ function placePot(G) { G.pot = { x: G.w / 2, y: (G.top + G.bot) / 2 + 10, r: 24 
 Horde.register({
   id: 'bee', cat: CAT, name: 'Bee Hive Hero', icon: '🐝',
   hook: 'Tower defense on the move. Hungry bears swarm in to steal the honey pot, and you fly circles around it shooting rapid-fire stingers.',
-  how: 'Drag anywhere to fly. Stingers fire at the nearest bear. Bears go for the <b>honey pot</b>: if its health runs out, you lose. Collect <b>Pollen</b>.',
-  bg: '#9ccc65', xpColor: '#fff176', killWord: 'bears stung', overText: 'HONEY STOLEN!', noContact: true,
-  player: { r: 12, hp: 120, speed: 175, emoji: '🐝', size: 30, faceLeft: true },
+  how: 'Drag anywhere to fly. Stingers fire at the nearest bear. Bears go for the <b>honey pot</b>: if its health runs out, you lose. <b>Pollen</b> flies to you automatically.',
+  bg: '#9ccc65', xpColor: '#fff176', killWord: 'bears stung', overText: 'HONEY STOLEN!', noContact: true, autoMagnet: true,
+  player: { r: 12, hp: 200, speed: 175, emoji: '🐝', size: 30, faceLeft: true },
   hpAt: (G) => G.pot,
   genericNames: { vit: { name: 'Reinforce Pot', icon: '🍯', desc: '+20 max pot HP and repair 20' }, reg: { name: 'Royal Jelly', icon: '👑', desc: 'Pot repairs 0.6 HP per second' } },
   stats: { rate: 0.26, dmg: 15, multi: 2, pierce: 0, workers: 0, honey: 0 },
