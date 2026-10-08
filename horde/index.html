@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#14151f">
-<title>Horde Arcade</title>
+<title>All Games</title>
 <style>
   :root { --bg: #14151f; --card: #1f2130; --line: #33364a; --text: #eceef7; --dim: #9a9db8; --accent: #ffd54f; }
   * { box-sizing: border-box; }
@@ -32,9 +32,9 @@
 </head>
 <body>
 <header>
-  <h1>🕹️ Horde <span>Arcade</span></h1>
+  <h1>🕹️ All <span>Games</span></h1>
   <a href="../index.html">← Back to console</a>
-  <p>20 bite-sized horde-survival games for phone and desktop. Drag (or WASD/arrows) to move, attacks fire on their own, and every level-up gives you a choice of 3 upgrades. How long can you last?</p>
+  <p>Every game in one place: 20 bite-sized horde-survival games plus the 9 console classics. Works on phone and desktop. Pick one and play.</p>
 </header>
 <main id="list"></main>
 <script src="engine.js"></script>
@@ -46,6 +46,18 @@
 (() => {
   const main = document.getElementById('list');
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  // Games that live inside the main console page; each opens straight into its module via a #hash link.
+  const CLASSICS = [
+    ['surv', '☣️', 'Load Test Sim', 'Full survivor game: weapons, evolutions, playable characters, bosses and a loot wheel.'],
+    ['snake', '🐍', 'Network Flow', 'Classic Snake. Steer the packet route, eat, grow, don\'t crash.'],
+    ['tetris', '🧱', 'DB Defragmenter', 'Classic falling-block puzzle with hold and hard drop.'],
+    ['flap', '➤', 'Packet Router', 'Flappy-style: tap to boost through firewall gaps and unlock builds.'],
+    ['shaft', '⇅', 'Stack Descent', 'Fall down a shaft and tap to flip sideways gravity through the gaps.'],
+    ['swing', '◎', 'Hook Swing', 'Swing from hooks: let go, fly, and grab the next one in reach.'],
+    ['worm', '〰️', 'Log Trail', 'Flappy flight where every orb grows a tail that can clip the gaps.'],
+    ['pulse', '◉', 'Shield Pulse', 'Hold to grow a shield and bounce incoming debris, without overheating.'],
+    ['idle', '⚙️', 'Task Automation', 'Idle clicker: deploy, automate and keep earning while you\'re away.'],
+  ];
   let cat = null, grid = null, n = 0;
   for (const id of Horde.order) {
     const g = Horde.games[id];
@@ -60,6 +72,15 @@
     a.className = 'game'; a.href = 'play.html?g=' + encodeURIComponent(id);
     a.innerHTML = '<span class="ic">' + g.icon + '</span><span class="info"><b><span class="num">' + n + '.</span>' + esc(g.name) + '</b><small>' + esc(g.hook) + '</small>' +
       (best ? '<span class="best">Best: ' + Horde.fmtTime(best) + '</span>' : '') + '</span>';
+    grid.appendChild(a);
+  }
+  const h = document.createElement('h2'); h.textContent = 'Console Classics'; main.appendChild(h);
+  grid = document.createElement('div'); grid.className = 'grid'; main.appendChild(grid);
+  for (const [view, icon, name, desc] of CLASSICS) {
+    n++;
+    const a = document.createElement('a');
+    a.className = 'game'; a.href = '../index.html#' + view;
+    a.innerHTML = '<span class="ic">' + icon + '</span><span class="info"><b><span class="num">' + n + '.</span>' + esc(name) + '</b><small>' + esc(desc) + '</small></span>';
     grid.appendChild(a);
   }
 })();
