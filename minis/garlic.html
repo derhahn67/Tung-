@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Vampire Garlic</title>
+<script src="../cookies.js" defer></script>
+</head>
+<body>
+<script src="mini.js"></script>
+<script>
+(() => {
+  const COLS = 7, ROWS = 11;
+  const WAY = [[-1, 1], [5, 1], [5, 4], [1, 4], [1, 7], [5, 7], [5, 9], [3, 9], [3, 10]];
+  const TOWERS = {
+    garlic: { icon: '🧄', name: 'Garlic', cost: 50, range: 1.25, rate: 0.25, dmg: 4, kind: 'aura', desc: 'stink aura' },
+    water: { icon: '💧', name: 'Holy Water', cost: 70, range: 2.2, rate: 0.85, dmg: 9, kind: 'slow', desc: 'slows' },
+    stake: { icon: '🏹', name: 'Stakes', cost: 90, range: 2.7, rate: 0.5, dmg: 19, kind: 'shot', desc: 'fast shots' },
+    sun: { icon: '☀️', name: 'Sun Lamp', cost: 150, range: 1.9, rate: 1.7, dmg: 45, kind: 'burst', desc: 'area blast' },
+  };
+  const FOES = {
+    vamp: { e: '🧛', hp: 30, spd: 0.95, gold: 7 }, bat: { e: '🦇', hp: 14, spd: 1.9, gold: 5 },
+    zomb: { e: '🧟', hp: 95, spd: 0.55, gold: 14 }, lord: { e: '🦹', hp: 520, spd: 0.6, gold: 70, boss: true },
+  };
+  const parts = Mini.particles();
+  let path, pathSet, towers, foes, shots, gold, lives, wave, queue, spawnT, inWave, sel, menu, speed, fx, msg, cellPx, gx, gy;
+  function buildPath() {
+    path = []; pathSet = new Set();
+    for (let i = 0; i + 1 < WAY.length; i++) {
+      const [x0, y0] = WAY[i], [x1, y1] = WAY[i + 1], n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+      for (let k = 0; k < n; k++) { const x = x0 + Math.sign(x1 - x0) * k, y = y0 + Math.sign(y1 - y0) * k; path.push([x, y]); if (x >= 0) pathSet.add(x + ',' + y); }
+    }
+    path.push(WAY[WAY.length - 1]); pathSet.add(WAY[WAY.length - 1].join(','));
+  }
+  function layoutGrid(S) {
+    const barH = 96, hudH = 64;
+    cellPx = Math.floor(Math.min((S.W - 16) / COLS, (S.bot - S.top - barH - hudH - 10) / ROWS));
+    gx = (S.W - cellPx * COLS) / 2; gy = S.top + hudH;
+  }
+  const cx = (c) => gx + (c + 0.5) * cellPx, cy = (r) => gy + (r + 0.5) * cellPx;
+  const posOnPath = (d) => {
+    const i = Math.min(path.length - 2, Math.floor(d)), t = Math.min(1, d - i);
+    const [x0, y0] = path[i], [x1, y1] = path[i + 1];
+    return [x0 + (x1 - x0) * t, y0 + (y1 - y0) * t];
+  };
+  function makeWave(n) {
+    const q = [], count = 6 + n * 2;
+    for (let i = 0; i < count; i++) {
+      const r = Math.random();
+      q.push(n >= 3 && r < 0.18 ? 'zomb' : n >= 2 && r < 0.45 ? 'bat' : 'vamp');
+    }
+    if (n % 5 === 0) q.push('lord');
+    return q;
+  }
+  function startWave() {
+    if (inWave) return;
+    wave++; queue = makeWave(wave); spawnT = 0; inWave = true; menu = null; Mini.sfx('jump');
+    msg = { t: 1.6, s: 'Wave ' + wave + (wave % 5 === 0 ? ': BOSS!' : '') };
+  }
+  function bar(S) { const y = S.bot - 92, n = 5, w = Math.min(84, (S.W - 16) / n - 6); return { y, w, x0: (S.W - (w + 6) * n + 6) / 2 }; }
+  Mini.game({
+    id: 'garlic', title: 'Vampire Garlic', icon: '🧄',
+    tagline: 'Night falls on Garlic Castle. Plant garlic, holy water, stake launchers and sun lamps to stop the vampire march!',
+    how: '👇 Pick a tower at the bottom, then tap an empty grass tile to build it.<br>👆 Tap a tower to upgrade or sell it.<br>▶ Start each wave. Don\'t let 20 vampires reach the castle!',
+    init(S) {
+      buildPath(); layoutGrid(S);
+      towers = []; foes = []; shots = []; fx = []; gold = 160; lives = 20; wave = 0; queue = []; inWave = false; sel = 'garlic'; menu = null; speed = 1; msg = null; parts.clear();
+    },
+    resize(S) { if (path) layoutGrid(S); },
+    tap(x, y, S) {
+      const B = bar(S);
+      if (y > B.y) {
+        const i = Math.floor((x - B.x0) / (B.w + 6));
+        const keys = Object.keys(TOWERS);
+        if (i >= 0 && i < 4) { sel = keys[i]; menu = null; Mini.sfx('tap'); }
+        if (i === 4) { if (inWave) speed = speed === 1 ? 2 : 1; else startWave(); }
+        return;
+      }
+      if (menu) {
+        const t = menu.t, up = { x: cx(t.c) - 60, y: cy(t.r) - cellPx - 26 }, sell = { x: cx(t.c) + 4, y: up.y };
+        if (y > up.y && y < up.y + 36) {
+          if (x > up.x && x < up.x + 56 && t.lvl < 3) { const c = upCost(t); if (gold >= c) { gold -= c; t.lvl++; Mini.sfx('coin'); } else Mini.sfx('tap'); menu = null; return; }
+          if (x > sell.x && x < sell.x + 56) { gold += Math.floor(t.spent * 0.6); towers = towers.filter((o) => o !== t); Mini.sfx('pop'); menu = null; return; }
+        }
+        menu = null;
+      }
+      const c = Math.floor((x - gx) / cellPx), r = Math.floor((y - gy) / cellPx);
+      if (c < 0 || r < 0 || c >= COLS || r >= ROWS) return;
+      const t = towers.find((o) => o.c === c && o.r === r);
+      if (t) { menu = { t }; return; }
+      if (pathSet.has(c + ',' + r)) return;
+      const T = TOWERS[sel];
+      if (gold < T.cost) { msg = { t: 1, s: 'Not enough gold' }; Mini.sfx('tap'); return; }
+      gold -= T.cost; towers.push({ c, r, type: sel, lvl: 1, cd: 0, spent: T.cost }); Mini.sfx('pop');
+      parts.burst(cx(c), cy(r), '#fff59d', 10, 120, 4, 0);
+    },
+    key(code) { if (code === 'Space' || code === 'Enter') startWave(); if (code === 'KeyF') speed = speed === 1 ? 2 : 1; if (/^Digit[1-4]$/.test(code)) sel = Object.keys(TOWERS)[+code.slice(5) - 1]; },
+    update(dt0, S) {
+      const dt = dt0 * speed;
+      parts.update(dt0);
+      if (msg) { msg.t -= dt0; if (msg.t <= 0) msg = null; }
+      fx.forEach((f) => { f.t -= dt; }); fx = fx.filter((f) => f.t > 0);
+      if (inWave) {
+        spawnT -= dt;
+        if (queue.length && spawnT <= 0) {
+          const k = queue.shift(), F = FOES[k], hp = F.hp * Math.pow(1.17, wave - 1);
+          foes.push({ k, F, d: 0, hp, max: hp, slowT: 0, wob: Math.random() * 6 });
+          spawnT = Math.max(0.35, 0.95 - wave * 0.03);
+        }
+        if (!queue.length && !foes.length) {
+          inWave = false; speed = 1; const bonus = 20 + wave * 5; gold += bonus;
+          msg = { t: 2, s: 'Wave ' + wave + ' cleared! +' + bonus + ' gold' }; Mini.sfx('win');
+        }
+      }
+      for (const f of foes) {
+        f.slowT -= dt;
+        f.d += f.F.spd * (f.slowT > 0 ? 0.55 : 1) * dt;
+        if (f.d >= path.length - 1) {
+          f.dead = true; lives -= f.F.boss ? 5 : 1; Mini.sfx('hit');
+          if (lives <= 0) { lives = 0; S.over(wave - 1, 'THE CASTLE FELL!', 'You survived ' + (wave - 1) + ' waves'); return; }
+        }
+      }
+      for (const t of towers) {
+        const T = TOWERS[t.type], mul = 1 + (t.lvl - 1) * 0.6, range = T.range * (1 + (t.lvl - 1) * 0.12);
+        t.cd -= dt;
+        const inRange = foes.filter((f) => { if (f.dead) return false; const [x, y] = posOnPath(f.d); return Math.hypot(x - t.c, y - t.r) <= range; });
+        if (T.kind === 'aura') { for (const f of inRange) hurt(f, T.dmg * mul * dt / T.rate); t.pulse = (t.pulse || 0) + dt; continue; }
+        if (t.cd > 0 || !inRange.length) continue;
+        t.cd = T.rate;
+        const target = inRange.reduce((a, b) => (b.d > a.d ? b : a));
+        if (T.kind === 'burst') {
+          for (const f of inRange) hurt(f, T.dmg * mul);
+          fx.push({ t: 0.35, max: 0.35, x: cx(t.c), y: cy(t.r), R: range * cellPx, c: '255,213,79' }); Mini.sfx('boom');
+        } else shots.push({ x: cx(t.c), y: cy(t.r), target, dmg: T.dmg * mul, slow: T.kind === 'slow', e: T.kind === 'slow' ? '💧' : '🗡️' });
+      }
+      for (const s of shots) {
+        if (s.target.dead) { s.done = true; continue; }
+        const [px, py] = posOnPath(s.target.d), tx = cx(px), ty = cy(py), d = Math.hypot(tx - s.x, ty - s.y), v = 520 * dt;
+        if (d <= v) { s.done = true; hurt(s.target, s.dmg); if (s.slow) s.target.slowT = 1.6; }
+        else { s.x += (tx - s.x) / d * v; s.y += (ty - s.y) / d * v; s.a = Math.atan2(ty - s.y, tx - s.x); }
+      }
+      shots = shots.filter((s) => !s.done); foes = foes.filter((f) => !f.dead);
+    },
+    draw(ctx, S) {
+      ctx.fillStyle = '#1b1530'; ctx.fillRect(0, 0, S.W, S.H);
+      if (!path) return;
+      const c = cellPx;
+      for (let r = 0; r < ROWS; r++) for (let q = 0; q < COLS; q++) {
+        const onPath = pathSet.has(q + ',' + r);
+        ctx.fillStyle = onPath ? '#6d5a4b' : (q + r) % 2 ? '#2f4a2a' : '#365530';
+        ctx.fillRect(gx + q * c, gy + r * c, c, c);
+      }
+      const [ex, ey] = WAY[WAY.length - 1]; Mini.emoji(ctx, '🏰', cx(ex), cy(ey), c * 1.1);
+      Mini.emoji(ctx, '⚰️', gx + c * 0.3, cy(1), c * 0.8);
+      if (menu) { const t = menu.t, T = TOWERS[t.type]; ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(cx(t.c), cy(t.r), T.range * (1 + (t.lvl - 1) * 0.12) * c, 0, Mini.TAU); ctx.stroke(); }
+      for (const t of towers) {
+        const T = TOWERS[t.type];
+        if (T.kind === 'aura') { ctx.fillStyle = 'rgba(200,230,120,' + (0.12 + 0.06 * Math.sin(S.time * 4)) + ')'; ctx.beginPath(); ctx.arc(cx(t.c), cy(t.r), T.range * (1 + (t.lvl - 1) * 0.12) * c, 0, Mini.TAU); ctx.fill(); }
+        ctx.fillStyle = 'rgba(0,0,0,.3)'; Mini.rrect(ctx, gx + t.c * c + 3, gy + t.r * c + 3, c - 6, c - 6, 8); ctx.fill();
+        Mini.emoji(ctx, T.icon, cx(t.c), cy(t.r), c * 0.7);
+        for (let i = 0; i < t.lvl; i++) { ctx.fillStyle = '#ffd54f'; ctx.beginPath(); ctx.arc(gx + t.c * c + 8 + i * 8, gy + t.r * c + c - 7, 3, 0, Mini.TAU); ctx.fill(); }
+      }
+      for (const f of foes) {
+        const [x, y] = posOnPath(f.d), px = cx(x), py = cy(y) + Math.sin(S.time * 8 + f.wob) * 2;
+        Mini.emoji(ctx, f.F.e, px, py, c * (f.F.boss ? 0.95 : 0.65));
+        if (f.slowT > 0) { ctx.fillStyle = 'rgba(100,181,246,.35)'; ctx.beginPath(); ctx.arc(px, py, c * 0.35, 0, Mini.TAU); ctx.fill(); }
+        const w = c * 0.7; ctx.fillStyle = 'rgba(0,0,0,.5)'; ctx.fillRect(px - w / 2, py - c * 0.48, w, 4); ctx.fillStyle = '#ef5350'; ctx.fillRect(px - w / 2, py - c * 0.48, w * f.hp / f.max, 4);
+      }
+      for (const s of shots) Mini.emoji(ctx, s.e, s.x, s.y, c * 0.35, (s.a || 0) + (s.slow ? 0 : Math.PI / 4));
+      for (const f of fx) { ctx.globalAlpha = f.t / f.max; ctx.fillStyle = 'rgba(' + f.c + ',0.45)'; ctx.beginPath(); ctx.arc(f.x, f.y, f.R * (1 - f.t / f.max * 0.5), 0, Mini.TAU); ctx.fill(); }
+      ctx.globalAlpha = 1;
+      parts.draw(ctx);
+      if (menu) {
+        const t = menu.t, x = cx(t.c), y = cy(t.r) - c - 26;
+        ctx.fillStyle = t.lvl < 3 ? (gold >= upCost(t) ? '#43a047' : '#555') : '#555'; Mini.rrect(ctx, x - 60, y, 56, 36, 8); ctx.fill();
+        Mini.text(ctx, t.lvl < 3 ? '⬆ ' + upCost(t) : 'MAX', x - 32, y + 18, 13, '#fff', 'center', null);
+        ctx.fillStyle = '#c62828'; Mini.rrect(ctx, x + 4, y, 56, 36, 8); ctx.fill();
+        Mini.text(ctx, '💰 ' + Math.floor(t.spent * 0.6), x + 32, y + 18, 13, '#fff', 'center', null);
+      }
+      // HUD
+      const top = S.top + 10;
+      Mini.text(ctx, '💰 ' + gold, 14, top + 18, 20, '#ffd54f', 'left');
+      Mini.text(ctx, '❤️ ' + lives, S.W / 2, top + 18, 20, '#fff');
+      Mini.text(ctx, 'Wave ' + wave, S.W - 60, top + 18, 18, '#fff', 'right');
+      // bottom bar
+      const B = bar(S);
+      Object.keys(TOWERS).forEach((k, i) => {
+        const T = TOWERS[k], x = B.x0 + i * (B.w + 6);
+        ctx.fillStyle = sel === k ? '#5e35b1' : '#2a2540'; Mini.rrect(ctx, x, B.y, B.w, 84, 12); ctx.fill();
+        if (sel === k) { ctx.strokeStyle = '#ffd54f'; ctx.lineWidth = 2; ctx.stroke(); }
+        Mini.emoji(ctx, T.icon, x + B.w / 2, B.y + 26, 30);
+        Mini.text(ctx, T.name, x + B.w / 2, B.y + 54, 11, '#fff', 'center', null);
+        Mini.text(ctx, '💰' + T.cost, x + B.w / 2, B.y + 71, 12, gold >= T.cost ? '#ffd54f' : '#888', 'center', null);
+      });
+      const x = B.x0 + 4 * (B.w + 6);
+      ctx.fillStyle = inWave ? '#37474f' : '#e53935'; Mini.rrect(ctx, x, B.y, B.w, 84, 12); ctx.fill();
+      Mini.text(ctx, inWave ? (speed === 2 ? '▶▶' : '▶') : '▶', x + B.w / 2, B.y + 30, 26, '#fff', 'center', null);
+      Mini.text(ctx, inWave ? (speed === 2 ? 'fast' : 'speed') : 'Wave ' + (wave + 1), x + B.w / 2, B.y + 62, 12, '#fff', 'center', null);
+      if (msg) { ctx.globalAlpha = Math.min(1, msg.t * 2); Mini.text(ctx, msg.s, S.W / 2, gy + cellPx * ROWS / 2, 24, '#ffeb3b'); ctx.globalAlpha = 1; }
+    },
+  });
+  function upCost(t) { return Math.floor(TOWERS[t.type].cost * 0.8 * t.lvl); }
+  function hurt(f, dmg) {
+    if (f.dead) return;
+    f.hp -= dmg;
+    if (f.hp <= 0) { f.dead = true; gold += f.F.gold; const [x, y] = posOnPath(f.d); parts.burst(cx(x), cy(y), '#b71c1c', 10, 140, 4); Mini.sfx('pop'); }
+  }
+})();
+</script>
+</body>
+</html>
