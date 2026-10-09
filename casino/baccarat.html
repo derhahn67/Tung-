@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Baccarat · Play-Money Casino</title>
+<link rel="stylesheet" href="casino.css">
+<style>
+  .sides { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .side { text-align: center; padding: 10px; border-radius: 14px; background: rgba(0,0,0,.2); border: 2px solid transparent; }
+  .side.won { border-color: var(--gold); }
+  .score { font-size: 28px; font-weight: 900; }
+  .pick { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .pick .btn { padding: 14px 6px; } .pick small { display: block; font-size: 11px; opacity: .8; font-weight: 600; }
+  .road { display: flex; gap: 4px; flex-wrap: wrap; justify-content: center; min-height: 24px; }
+  .road span { width: 22px; height: 22px; border-radius: 50%; font-size: 11px; font-weight: 900; display: flex; align-items: center; justify-content: center; }
+</style>
+<script src="../cookies.js" defer></script>
+</head>
+<body>
+<script src="casino.js"></script>
+<script>Casino.header('Baccarat', '💎');</script>
+<div class="wrap">
+  <div class="panel">
+    <div class="sides">
+      <div class="side" id="pSide"><div class="label">Player</div><div class="cards" id="pCards"></div><div class="score" id="pScore">–</div></div>
+      <div class="side" id="bSide"><div class="label">Banker</div><div class="cards" id="bCards"></div><div class="score" id="bScore">–</div></div>
+    </div>
+    <div class="msg" id="msg">Pick a side, then deal</div>
+    <div class="road" id="road"></div>
+  </div>
+  <div class="panel col" style="margin-top:12px">
+    <div class="pick">
+      <button class="btn blue on" data-s="P">Player<small>pays 1:1</small></button>
+      <button class="btn green" data-s="T" style="background:#2e7d32;color:#fff">Tie<small>pays 8:1</small></button>
+      <button class="btn red" data-s="B">Banker<small>pays 0.95:1</small></button>
+    </div>
+    <div id="bet"></div>
+    <div class="row"><button class="btn gold" id="deal">Deal</button></div>
+  </div>
+  <p class="disclaimer">Punto Banco with standard third-card rules. Player and Banker bets push on a tie. Play money only.</p>
+</div>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const bet = Casino.betBox($('bet'), { key: 'bac', init: 50 });
+  let side = 'P', shoe = Casino.newDeck(8), busy = false, road = [];
+  document.querySelectorAll('.pick .btn').forEach((b) => b.onclick = () => { if (busy) return; side = b.dataset.s; document.querySelectorAll('.pick .btn').forEach((x) => x.classList.toggle('on', x === b)); });
+  const v = (c) => (c.r === 14 ? 1 : c.r >= 10 ? 0 : c.r);
+  const tot = (h) => h.reduce((a, c) => a + v(c), 0) % 10;
+  const draw = () => { if (shoe.length < 20) shoe = Casino.newDeck(8); Casino.sfx('card'); return shoe.pop(); };
+  function show(p, b) {
+    $('pCards').innerHTML = ''; p.forEach((c) => $('pCards').appendChild(Casino.cardEl(c)));
+    $('bCards').innerHTML = ''; b.forEach((c) => $('bCards').appendChild(Casino.cardEl(c)));
+    $('pScore').textContent = p.length ? tot(p) : '–'; $('bScore').textContent = b.length ? tot(b) : '–';
+  }
+  function msg(t, cls) { const m = $('msg'); m.textContent = t; m.className = 'msg' + (cls ? ' ' + cls : ''); }
+  $('deal').onclick = async () => {
+    if (busy) return;
+    const stake = bet.value;
+    if (!Casino.bet(stake)) return;
+    busy = true; bet.disable(true); msg(''); $('pSide').classList.remove('won'); $('bSide').classList.remove('won');
+    const p = [], b = [];
+    for (let i = 0; i < 2; i++) { p.push(draw()); show(p, b); await Casino.sleep(350); b.push(draw()); show(p, b); await Casino.sleep(350); }
+    let pt = tot(p), bt = tot(b);
+    if (pt < 8 && bt < 8) {
+      let third = null;
+      if (pt <= 5) { third = draw(); p.push(third); show(p, b); await Casino.sleep(500); }
+      bt = tot(b);
+      let bankerDraws;
+      if (third === null) bankerDraws = bt <= 5;
+      else {
+        const t = v(third);
+        bankerDraws = bt <= 2 || (bt === 3 && t !== 8) || (bt === 4 && t >= 2 && t <= 7) || (bt === 5 && t >= 4 && t <= 7) || (bt === 6 && t >= 6 && t <= 7);
+      }
+      if (bankerDraws) { b.push(draw()); show(p, b); await Casino.sleep(500); }
+    }
+    pt = tot(p); bt = tot(b);
+    const res = pt > bt ? 'P' : bt > pt ? 'B' : 'T';
+    if (res !== 'T') $(res === 'P' ? 'pSide' : 'bSide').classList.add('won');
+    road.unshift(res); road = road.slice(0, 30);
+    $('road').innerHTML = road.map((r) => '<span style="background:' + (r === 'P' ? '#1565c0' : r === 'B' ? '#c62828' : '#2e7d32') + '">' + r + '</span>').join('');
+    let back = 0;
+    if (res === 'T') back = side === 'T' ? stake * 9 : stake;
+    else if (side === res) back = res === 'P' ? stake * 2 : Math.floor(stake * 1.95);
+    const label = res === 'T' ? 'Tie ' + pt + '–' + bt : (res === 'P' ? 'Player' : 'Banker') + ' wins ' + Math.max(pt, bt) + '–' + Math.min(pt, bt);
+    if (back > stake) { Casino.pay(back, stake); msg(label + '. +' + Casino.fmt(back - stake), 'win'); Casino.sfx('win'); }
+    else if (back === stake) { Casino.pay(back, stake); msg(label + '. Bet returned'); }
+    else { msg(label, 'lose'); Casino.sfx('lose'); }
+    busy = false; bet.disable(false);
+  };
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Money Wheel · Play-Money Casino</title>
+<link rel="stylesheet" href="casino.css">
+<style>
+  canvas { display: block; margin: 0 auto; max-width: 100%; }
+  .spots { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .spot { position: relative; border: none; border-radius: 12px; padding: 12px 4px; font-weight: 900; font-size: 18px; color: #fff; }
+  .spot small { display: block; font-size: 11px; font-weight: 600; opacity: .85; }
+  .spot .chip { position: absolute; top: -8px; right: -6px; width: 30px; height: 30px; background: #1565c0; font-size: 9px; }
+  .spot.won { outline: 3px solid var(--gold); }
+</style>
+<script src="../cookies.js" defer></script>
+</head>
+<body>
+<script src="casino.js"></script>
+<script>Casino.header('Money Wheel', '🎯');</script>
+<div class="wrap">
+  <div class="panel col">
+    <canvas id="wheel" width="300" height="300"></canvas>
+    <div class="msg" id="msg">Tap a number to bet on it, then spin</div>
+  </div>
+  <div class="panel col" style="margin-top:12px">
+    <div id="bet"></div>
+    <div class="spots" id="spots"></div>
+    <div class="row"><button class="btn gold" id="spin" style="min-width:160px">Spin</button><button class="btn small" id="clear">Clear</button></div>
+  </div>
+  <p class="disclaimer">54 segments, Big Six style: a number pays its own value to 1 (★ pays 40:1). Play money only.</p>
+</div>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const KINDS = [[1, 25, '#90a4ae'], [2, 15, '#42a5f5'], [5, 7, '#ab47bc'], [10, 4, '#26a69a'], [20, 2, '#ef6c00'], [40, 1, '#e53935']];
+  // Spread the segments around the wheel so the big numbers are apart.
+  const SEGS = [];
+  const pool = KINDS.flatMap(([v, n]) => Array(n).fill(v));
+  const big = pool.filter((v) => v >= 5), small = pool.filter((v) => v < 5);
+  const step = 54 / big.length;
+  for (let i = 0; i < 54; i++) SEGS.push(null);
+  big.sort((a, b) => b - a).forEach((v, i) => { SEGS[Math.floor(i * step) % 54] = v; });
+  let si = 0; for (let i = 0; i < 54; i++) if (SEGS[i] == null) SEGS[i] = small[si++];
+  for (let i = 0; i < 54; i++) if (SEGS[i] === 2 && SEGS[(i + 1) % 54] === 2) { const j = SEGS.indexOf(1, i); if (j > 0) [SEGS[(i + 1) % 54], SEGS[j]] = [SEGS[j], SEGS[(i + 1) % 54]]; }
+  const colorOf = (v) => KINDS.find((k) => k[0] === v)[2];
+  const label = (v) => (v === 40 ? '★' : String(v));
+  const bet = Casino.betBox($('bet'), { key: 'wheel', init: 25, label: 'Chip' });
+  let bets = {}, spinning = false, rot = 0;
+  const S = $('spots');
+  for (const [v, n, col] of KINDS) {
+    const b = document.createElement('button'); b.className = 'spot'; b.style.background = col; b.dataset.v = v;
+    b.innerHTML = label(v) + '<small>pays ' + v + ':1 · ' + n + '/54</small>';
+    b.onclick = () => { if (spinning || !Casino.bet(bet.value)) return; bets[v] = (bets[v] || 0) + bet.value; renderBets(); };
+    S.appendChild(b);
+  }
+  function renderBets() {
+    S.querySelectorAll('.spot').forEach((b) => {
+      let c = b.querySelector('.chip'); const v = bets[b.dataset.v];
+      if (v) { if (!c) { c = document.createElement('span'); c.className = 'chip'; b.appendChild(c); } c.textContent = v >= 1000 ? (v / 1000).toFixed(1) + 'k' : v; } else if (c) c.remove();
+    });
+  }
+  $('clear').onclick = () => { if (spinning) return; const t = Object.values(bets).reduce((a, b) => a + b, 0); if (t) Casino.pay(t); bets = {}; renderBets(); };
+  const cv = $('wheel'), ctx = cv.getContext('2d'), R = 140, SEG = Math.PI * 2 / 54;
+  function draw() {
+    ctx.clearRect(0, 0, 300, 300); ctx.save(); ctx.translate(150, 150);
+    for (let i = 0; i < 54; i++) {
+      const a0 = rot + i * SEG - Math.PI / 2;
+      ctx.fillStyle = colorOf(SEGS[i]); ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, R, a0, a0 + SEG); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,.35)'; ctx.lineWidth = 1; ctx.stroke();
+      ctx.save(); ctx.rotate(a0 + SEG / 2); ctx.translate(R - 16, 0); ctx.rotate(Math.PI / 2);
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 11px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(label(SEGS[i]), 0, 0); ctx.restore();
+    }
+    ctx.fillStyle = '#263238'; ctx.beginPath(); ctx.arc(0, 0, 34, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#ffd54f'; ctx.font = 'bold 22px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('$', 0, 1);
+    ctx.restore();
+    ctx.fillStyle = '#ffd54f'; ctx.beginPath(); ctx.moveTo(140, 0); ctx.lineTo(160, 0); ctx.lineTo(150, 20); ctx.closePath(); ctx.fill();
+  }
+  draw();
+  function msg(t, cls) { const m = $('msg'); m.textContent = t; m.className = 'msg' + (cls ? ' ' + cls : ''); }
+  $('spin').onclick = () => {
+    const staked = Object.values(bets).reduce((a, b) => a + b, 0);
+    if (spinning) return; if (!staked) return Casino.toast('Tap a number to bet on it first');
+    spinning = true; msg(''); S.querySelectorAll('.spot').forEach((b) => b.classList.remove('won'));
+    const k = Casino.rand(54), v = SEGS[k];
+    const start = rot; let target = -(k + 0.5) * SEG; while (target < start + Math.PI * 10) target += Math.PI * 2;
+    const t0 = performance.now(), dur = 4500; let last = 0;
+    (function anim(now) {
+      const t = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - t, 3);
+      rot = start + (target - start) * e; draw();
+      const s = Math.floor(rot / SEG); if (s !== last) { last = s; Casino.sfx('tick'); }
+      if (t < 1) return requestAnimationFrame(anim);
+      rot %= Math.PI * 2;
+      S.querySelector('[data-v="' + v + '"]').classList.add('won');
+      const back = bets[v] ? bets[v] * (v + 1) : 0;
+      if (back) { Casino.pay(back, staked); msg(label(v) + '! +' + Casino.fmt(back - staked), back > staked ? 'win' : ''); Casino.sfx(v >= 20 ? 'big' : 'win'); }
+      else { msg(label(v) + '. No win', 'lose'); Casino.sfx('lose'); }
+      bets = {}; renderBets(); spinning = false;
+    })(t0);
+  };
+})();
+</script>
+</body>
+</html>

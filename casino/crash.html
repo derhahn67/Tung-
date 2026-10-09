@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Crash Rocket · Play-Money Casino</title>
+<link rel="stylesheet" href="casino.css">
+<style>
+  canvas { width: 100%; height: 260px; display: block; background: #0c1a2e; border-radius: 12px; }
+  .auto { display: flex; gap: 8px; align-items: center; justify-content: center; }
+  .auto input { width: 90px; padding: 8px; border-radius: 9px; border: none; font: inherit; font-weight: 800; text-align: center; }
+  .hist { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; font-weight: 800; font-size: 13px; }
+  .hist span { padding: 3px 8px; border-radius: 999px; background: rgba(0,0,0,.3); }
+</style>
+<script src="../cookies.js" defer></script>
+</head>
+<body>
+<script src="casino.js"></script>
+<script>Casino.header('Crash Rocket', '🚀');</script>
+<div class="wrap">
+  <div class="panel col">
+    <canvas id="cv"></canvas>
+    <div class="hist" id="hist"></div>
+    <div class="msg" id="msg">Cash out before the rocket crashes!</div>
+  </div>
+  <div class="panel col" style="margin-top:12px">
+    <div id="bet"></div>
+    <div class="auto"><label class="label" for="auto">Auto cash-out at ×</label><input id="auto" type="number" min="1.01" step="0.01" placeholder="off" inputmode="decimal"></div>
+    <div class="row"><button class="btn gold" id="go" style="min-width:200px">Launch</button></div>
+  </div>
+  <p class="disclaimer">The multiplier climbs until the rocket crashes at a random point (97% return). Play money only.</p>
+</div>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const bet = Casino.betBox($('bet'), { key: 'crash', init: 50 });
+  try { const a = localStorage.getItem('casino-crash-auto'); if (a) $('auto').value = a; } catch (e) { /* ignore */ }
+  $('auto').onchange = () => { try { localStorage.setItem('casino-crash-auto', $('auto').value); } catch (e) { /* ignore */ } };
+  const cv = $('cv'), ctx = cv.getContext('2d');
+  let state = 'idle', stake = 0, crashAt = 1, t0 = 0, m = 1, cashed = 0, hist = [], pts = [];
+  const K = 0.11, mAt = (t) => Math.exp(K * t);
+  function fit() { const d = Math.min(2, devicePixelRatio || 1); cv.width = cv.clientWidth * d; cv.height = cv.clientHeight * d; ctx.setTransform(d, 0, 0, d, 0, 0); }
+  window.addEventListener('resize', fit); fit();
+  function draw() {
+    const W = cv.clientWidth, H = cv.clientHeight;
+    ctx.clearRect(0, 0, W, H);
+    const tMax = Math.max(8, pts.length ? pts[pts.length - 1][0] * 1.15 : 8), mMax = Math.max(2, m * 1.2);
+    const X = (t) => 30 + (t / tMax) * (W - 50), Y = (v) => H - 24 - ((v - 1) / (mMax - 1)) * (H - 50);
+    ctx.strokeStyle = 'rgba(255,255,255,.08)'; ctx.fillStyle = 'rgba(255,255,255,.4)'; ctx.font = '11px system-ui'; ctx.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) { const v = 1 + (mMax - 1) * i / 4; ctx.beginPath(); ctx.moveTo(30, Y(v)); ctx.lineTo(W, Y(v)); ctx.stroke(); ctx.fillText(v.toFixed(1) + '×', 2, Y(v) + 4); }
+    if (pts.length > 1) {
+      ctx.strokeStyle = state === 'crashed' ? '#ff5252' : '#69f0ae'; ctx.lineWidth = 3; ctx.beginPath();
+      pts.forEach(([t, v], i) => (i ? ctx.lineTo(X(t), Y(v)) : ctx.moveTo(X(t), Y(v)))); ctx.stroke();
+      const [lt, lv] = pts[pts.length - 1];
+      ctx.font = '26px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(state === 'crashed' ? '💥' : '🚀', X(lt), Y(lv) - 6);
+      ctx.textAlign = 'left';
+    }
+    ctx.fillStyle = state === 'crashed' ? '#ff5252' : '#fff'; ctx.font = 'bold 40px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText(m.toFixed(2) + '×', W / 2, 56); ctx.textAlign = 'left';
+  }
+  function msg(t, cls) { const el = $('msg'); el.textContent = t; el.className = 'msg' + (cls ? ' ' + cls : ''); }
+  function cashOut() {
+    if (state !== 'flying' || cashed) return;
+    cashed = m; const win = Math.floor(stake * m);
+    Casino.pay(win, stake); Casino.sfx('win');
+    msg('Cashed out at ' + m.toFixed(2) + '× · +' + Casino.fmt(win - stake), 'win');
+    $('go').textContent = 'Cashed ✓'; $('go').disabled = true;
+  }
+  function frame(now) {
+    const t = (now - t0) / 1000;
+    m = mAt(t);
+    if (m >= crashAt) {
+      m = crashAt; pts.push([Math.log(crashAt) / K, crashAt]); state = 'crashed';
+      hist.unshift(crashAt); hist = hist.slice(0, 12);
+      $('hist').innerHTML = hist.map((h) => '<span style="color:' + (h >= 2 ? '#69f0ae' : '#ff8a80') + '">' + h.toFixed(2) + '×</span>').join('');
+      if (!cashed) { msg('Crashed at ' + crashAt.toFixed(2) + '×. Lost 🪙 ' + Casino.fmt(stake), 'lose'); Casino.sfx('lose'); }
+      draw(); $('go').disabled = false; $('go').textContent = 'Launch'; $('go').className = 'btn gold'; bet.disable(false);
+      state = 'idle'; return;
+    }
+    pts.push([t, m]);
+    const auto = parseFloat($('auto').value);
+    if (!cashed && auto >= 1.01 && m >= auto) cashOut();
+    if (!cashed) $('go').textContent = 'Cash out 🪙 ' + Casino.fmt(stake * m);
+    draw();
+    requestAnimationFrame(frame);
+  }
+  $('go').onclick = () => {
+    if (state === 'flying') return cashOut();
+    if (!Casino.bet(bet.value)) return;
+    stake = bet.value; cashed = 0; pts = [[0, 1]]; m = 1;
+    const u = Math.random();
+    crashAt = Math.min(1000, Math.max(1, Math.floor(0.97 / (1 - u) * 100) / 100));
+    state = 'flying'; bet.disable(true); msg('');
+    $('go').className = 'btn blue';
+    t0 = performance.now(); requestAnimationFrame(frame);
+  };
+  draw();
+})();
+</script>
+</body>
+</html>

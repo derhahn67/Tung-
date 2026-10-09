@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Roulette · Play-Money Casino</title>
+<link rel="stylesheet" href="casino.css">
+<style>
+  .layout { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; }
+  @media (max-width: 700px) { .layout { grid-template-columns: 1fr; } }
+  canvas { display: block; margin: 0 auto; max-width: 100%; }
+  .board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; }
+  .cell { position: relative; border: none; border-radius: 6px; padding: 9px 0; font-weight: 800; color: #fff; font-size: 15px; background: #222; }
+  .cell.r { background: #c62828; } .cell.k { background: #212121; } .cell.g { background: #2e7d32; grid-column: span 3; }
+  .cell.o { background: rgba(0,0,0,.35); font-size: 13px; }
+  .cell .chip { position: absolute; right: 2px; top: 50%; transform: translateY(-50%) scale(.8); width: 26px; height: 26px; font-size: 9px; background: #1565c0; }
+  .cell.won { outline: 3px solid var(--gold); }
+  .outs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; margin-top: 6px; }
+  .chips { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
+  .chips .chip { width: 42px; height: 42px; font-size: 12px; cursor: pointer; border-style: dashed; }
+  .chips .chip.sel { outline: 3px solid var(--gold); transform: scale(1.1); }
+  .hist { display: flex; gap: 4px; justify-content: center; flex-wrap: wrap; min-height: 26px; }
+  .hist span { width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; }
+</style>
+<script src="../cookies.js" defer></script>
+</head>
+<body>
+<script src="casino.js"></script>
+<script>Casino.header('Roulette', '🎡');</script>
+<div class="wrap layout">
+  <div class="panel col">
+    <canvas id="wheel" width="280" height="280"></canvas>
+    <div class="msg" id="msg">Place chips, then spin</div>
+    <div class="hist" id="hist"></div>
+    <div class="label center">Chip value</div>
+    <div class="chips" id="chips"></div>
+    <div class="row"><button class="btn gold" id="spin">Spin</button><button class="btn small" id="undo">Undo</button><button class="btn small" id="clear">Clear</button><button class="btn small" id="rebet">Rebet</button></div>
+    <div class="center muted" id="total"></div>
+  </div>
+  <div class="panel">
+    <div class="board" id="board"></div>
+    <div class="outs" id="outs"></div>
+  </div>
+</div>
+<p class="disclaimer">European single-zero wheel. Straight up pays 35:1, dozens and columns 2:1, red/black, odd/even and high/low 1:1. Play money only.</p>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const ORDER = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26];
+  const REDS = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36]);
+  const colorOf = (n) => (n === 0 ? 'g' : REDS.has(n) ? 'r' : 'k');
+  const CHIPS = [[10, '#546e7a'], [50, '#c62828'], [100, '#2e7d32'], [500, '#6a1b9a'], [1000, '#ef6c00']];
+  let chip = 10, bets = {}, history = [], lastBets = null, spinning = false, rot = 0;
+  // Each bet key maps to [payout multiplier incl. stake, test(n)].
+  const BETS = {};
+  for (let n = 0; n <= 36; n++) BETS['n' + n] = [36, (x) => x === n, String(n)];
+  Object.assign(BETS, {
+    red: [2, (x) => REDS.has(x), 'Red'], black: [2, (x) => x > 0 && !REDS.has(x), 'Black'],
+    odd: [2, (x) => x > 0 && x % 2 === 1, 'Odd'], even: [2, (x) => x > 0 && x % 2 === 0, 'Even'],
+    low: [2, (x) => x >= 1 && x <= 18, '1–18'], high: [2, (x) => x >= 19, '19–36'],
+    d1: [3, (x) => x >= 1 && x <= 12, '1st 12'], d2: [3, (x) => x >= 13 && x <= 24, '2nd 12'], d3: [3, (x) => x >= 25, '3rd 12'],
+    c1: [3, (x) => x > 0 && x % 3 === 1, 'Col 1'], c2: [3, (x) => x > 0 && x % 3 === 2, 'Col 2'], c3: [3, (x) => x > 0 && x % 3 === 0, 'Col 3'],
+  });
+  const stack = [];
+  // board
+  const B = $('board');
+  const cell = (key, cls, label) => {
+    const b = document.createElement('button'); b.className = 'cell ' + cls; b.dataset.k = key; b.innerHTML = '<span>' + label + '</span>';
+    b.onclick = () => place(key); return b;
+  };
+  B.appendChild(cell('n0', 'g', '0'));
+  for (let n = 1; n <= 36; n++) B.appendChild(cell('n' + n, colorOf(n), n));
+  ['c1', 'c2', 'c3'].forEach((k) => B.appendChild(cell(k, 'o', '2:1')));
+  const O = $('outs');
+  ['d1', 'd2', 'd3', 'low', 'even', 'high', 'red', 'odd', 'black'].forEach((k) => {
+    const c = cell(k, k === 'red' ? 'r' : k === 'black' ? 'k' : 'o', BETS[k][2]); O.appendChild(c);
+  });
+  // chip picker
+  const CH = $('chips');
+  CHIPS.forEach(([v, col]) => {
+    const c = document.createElement('span'); c.className = 'chip' + (v === chip ? ' sel' : ''); c.style.background = col; c.textContent = v >= 1000 ? v / 1000 + 'k' : v;
+    c.onclick = () => { chip = v; CH.querySelectorAll('.chip').forEach((x) => x.classList.remove('sel')); c.classList.add('sel'); };
+    CH.appendChild(c);
+  });
+  const totalBet = () => Object.values(bets).reduce((a, b) => a + b, 0);
+  function renderBets() {
+    document.querySelectorAll('.cell').forEach((c) => {
+      const v = bets[c.dataset.k]; let ch = c.querySelector('.chip');
+      if (v) { if (!ch) { ch = document.createElement('span'); ch.className = 'chip'; c.appendChild(ch); } ch.textContent = v >= 1000 ? (v / 1000).toFixed(v % 1000 ? 1 : 0) + 'k' : v; }
+      else if (ch) ch.remove();
+    });
+    $('total').textContent = totalBet() ? 'Total bet: 🪙 ' + Casino.fmt(totalBet()) : '';
+  }
+  function place(k) {
+    if (spinning) return;
+    if (!Casino.bet(chip)) return;
+    bets[k] = (bets[k] || 0) + chip; stack.push([k, chip]); renderBets();
+  }
+  $('undo').onclick = () => { if (spinning || !stack.length) return; const [k, v] = stack.pop(); bets[k] -= v; if (!bets[k]) delete bets[k]; Casino.pay(v); renderBets(); };
+  $('clear').onclick = () => { if (spinning) return; const t = totalBet(); if (t) Casino.pay(t); bets = {}; stack.length = 0; renderBets(); };
+  $('rebet').onclick = () => {
+    if (spinning || !lastBets) return;
+    const need = Object.values(lastBets).reduce((a, b) => a + b, 0);
+    if (!Casino.bet(need)) return;
+    for (const [k, v] of Object.entries(lastBets)) { bets[k] = (bets[k] || 0) + v; stack.push([k, v]); }
+    renderBets();
+  };
+  // wheel
+  const cv = $('wheel'), ctx = cv.getContext('2d'), R = 135, SEG = Math.PI * 2 / ORDER.length;
+  function drawWheel(ball) {
+    ctx.clearRect(0, 0, 280, 280);
+    ctx.save(); ctx.translate(140, 140);
+    ctx.fillStyle = '#5d4037'; ctx.beginPath(); ctx.arc(0, 0, R + 4, 0, Math.PI * 2); ctx.fill();
+    for (let i = 0; i < ORDER.length; i++) {
+      const a0 = rot + i * SEG - Math.PI / 2, n = ORDER[i];
+      ctx.fillStyle = n === 0 ? '#2e7d32' : REDS.has(n) ? '#c62828' : '#1b1b1b';
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, R, a0, a0 + SEG); ctx.closePath(); ctx.fill();
+      ctx.save(); ctx.rotate(a0 + SEG / 2); ctx.fillStyle = '#fff'; ctx.font = 'bold 11px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.translate(R - 14, 0); ctx.rotate(Math.PI / 2); ctx.fillText(String(n), 0, 0); ctx.restore();
+    }
+    ctx.fillStyle = '#3e2723'; ctx.beginPath(); ctx.arc(0, 0, R * 0.62, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#ffd54f'; ctx.beginPath(); ctx.arc(0, 0, 14, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    // pointer
+    ctx.fillStyle = '#ffd54f'; ctx.beginPath(); ctx.moveTo(140, 6); ctx.lineTo(132, -6); ctx.lineTo(148, -6); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(130, 0); ctx.lineTo(150, 0); ctx.lineTo(140, 16); ctx.closePath(); ctx.fill();
+    if (ball != null) { ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(140, 140 - R + 28, 7, 0, Math.PI * 2); ctx.fill(); }
+  }
+  drawWheel();
+  function msg(t, cls) { const m = $('msg'); m.textContent = t; m.className = 'msg' + (cls ? ' ' + cls : ''); }
+  $('spin').onclick = () => {
+    if (spinning) return;
+    const staked = totalBet();
+    if (!staked) { Casino.toast('Tap the board to place chips first'); return; }
+    spinning = true; msg('No more bets…');
+    document.querySelectorAll('.cell.won').forEach((c) => c.classList.remove('won'));
+    const k = Casino.rand(ORDER.length), n = ORDER[k];
+    const start = rot, base = -(k + 0.5) * SEG, turns = Math.PI * 2 * 6;
+    let target = base; while (target < start + turns) target += Math.PI * 2;
+    const t0 = performance.now(), dur = 4200;
+    let lastTick = 0;
+    (function anim(now) {
+      const t = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - t, 3);
+      rot = start + (target - start) * e; drawWheel(t >= 1 ? n : null);
+      const seg = Math.floor(rot / SEG); if (seg !== lastTick) { lastTick = seg; if (t < 0.97) Casino.sfx('tick'); }
+      if (t < 1) return requestAnimationFrame(anim);
+      rot %= Math.PI * 2;
+      let back = 0;
+      for (const [key, v] of Object.entries(bets)) if (BETS[key][1](n)) { back += v * BETS[key][0]; document.querySelector('[data-k="' + key + '"]').classList.add('won'); }
+      document.querySelector('[data-k="n' + n + '"]').classList.add('won');
+      history.unshift(n); history = history.slice(0, 12);
+      $('hist').innerHTML = history.map((x) => '<span style="background:' + (x === 0 ? '#2e7d32' : REDS.has(x) ? '#c62828' : '#111') + '">' + x + '</span>').join('');
+      const name = n + ' ' + (n === 0 ? 'green' : REDS.has(n) ? 'red' : 'black');
+      if (back > 0) { Casino.pay(back, staked); msg(name + '! ' + (back > staked ? 'You win +' + Casino.fmt(back - staked) : 'Got back ' + Casino.fmt(back)), 'win'); Casino.sfx(back >= staked * 10 ? 'big' : 'win'); }
+      else { msg(name + '. No win', 'lose'); Casino.sfx('lose'); }
+      lastBets = bets; bets = {}; stack.length = 0; renderBets(); spinning = false;
+    })(t0);
+  };
+})();
+</script>
+</body>
+</html>

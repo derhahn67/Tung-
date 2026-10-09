@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Frog Hop</title>
+<script src="../cookies.js" defer></script>
+</head>
+<body>
+<script src="mini.js"></script>
+<script>
+(() => {
+  const MAXJ = 340, FLIGHT = 0.62, CHARGE = 1.05;
+  const parts = Mini.particles();
+  let pads, frog, cam, charge, charging, score, streak, flies, floats, water, splashT;
+  function addPad() {
+    const last = pads[pads.length - 1], n = pads.length;
+    const w = Math.max(38, 92 - n * 1.6 + Mini.rand(-8, 8));
+    const gap = Mini.rand(90, Math.min(MAXJ - 30, 150 + n * 6));
+    const pad = { x: last.x + last.w / 2 + gap + w / 2, w, vx: 0, sink: false, t: 0 };
+    if (n > 6 && Math.random() < Math.min(0.45, n / 40)) pad.vx = Mini.pick([-1, 1]) * Mini.rand(25, 45 + n);
+    if (n > 10 && Math.random() < 0.18) pad.sink = true;
+    pad.home = pad.x;
+    pads.push(pad);
+    if (Math.random() < 0.55) flies.push({ x: (last.x + pad.x) / 2 + Mini.rand(-30, 30), y: Mini.rand(-150, -80), ph: Math.random() * 6 });
+  }
+  function jump() {
+    if (!charging || frog.air) return;
+    charging = false;
+    const k = Math.min(1, charge / CHARGE);
+    frog.air = { x0: frog.x, x1: frog.x + 40 + k * MAXJ, t: 0, h: 70 + k * 110 };
+    frog.pad = null;
+    Mini.sfx('jump');
+  }
+  Mini.game({
+    id: 'frog', title: 'Frog Hop', icon: '🐸',
+    tagline: 'Hop across the pond, one lily pad at a time. Judge every leap just right and snap up flies on the way!',
+    how: '👆 Hold to charge your jump, release to leap.<br>🎯 Land near the middle of a pad for a PERFECT bonus.<br>🪰 Catch flies mid-air. Watch out for drifting and sinking pads!',
+    init(S) {
+      pads = [{ x: 0, w: 110, vx: 0, home: 0 }]; flies = []; floats = [];
+      for (let i = 0; i < 6; i++) addPad();
+      frog = { x: 0, pad: pads[0], air: null, y: 0 }; cam = -S.W * 0.25; charge = 0; charging = false; score = 0; streak = 0; water = 0; splashT = 0; parts.clear();
+    },
+    down() { if (!frog.air && !splashT) { charging = true; charge = 0; } },
+    up() { jump(); },
+    key(code) { if (code === 'Space' && !frog.air && !charging && !splashT) { charging = true; charge = 0; } },
+    keyUp(code) { if (code === 'Space') jump(); },
+    update(dt, S) {
+      parts.update(dt); water += dt;
+      floats.forEach((f) => { f.t -= dt; f.y -= 30 * dt; }); floats = floats.filter((f) => f.t > 0);
+      for (const p of pads) {
+        if (p.vx) { p.x += p.vx * dt; if (Math.abs(p.x - p.home) > 50) p.vx = -p.vx; }
+        if (p.sinking) { p.t += dt; if (p.t > 1.4) p.gone = true; }
+      }
+      if (splashT) { splashT -= dt; if (splashT <= 0) S.over(score, 'SPLASH!', score + ' hops · best streak ' + streak); return; }
+      if (charging) charge = Math.min(CHARGE * 1.15, charge + dt);
+      if (frog.pad) {
+        frog.x += frog.pad.vx * dt;
+        if (frog.pad.gone) { splashT = 0.8; Mini.sfx('lose'); parts.burst(frog.x - cam, S.H * 0.62, '#81d4fa', 20, 220, 5); return; }
+      }
+      if (frog.air) {
+        const a = frog.air; a.t += dt / FLIGHT;
+        const t = Math.min(1, a.t);
+        frog.x = a.x0 + (a.x1 - a.x0) * t; frog.y = -Math.sin(t * Math.PI) * a.h;
+        for (const f of flies) if (!f.got && Math.abs(f.x - frog.x) < 34 && Math.abs(f.y - (frog.y - 20)) < 40) { f.got = true; score += 2; floats.push({ x: f.x, y: f.y, t: 1, s: '+2 🪰' }); Mini.sfx('coin'); }
+        if (t >= 1) {
+          frog.air = null; frog.y = 0;
+          const pad = pads.find((p) => !p.gone && Math.abs(p.x - frog.x) < p.w / 2 + 6);
+          if (!pad) { splashT = 0.9; Mini.sfx('lose'); parts.burst(frog.x - cam, S.H * 0.62, '#81d4fa', 24, 240, 5); return; }
+          if (pad !== pads[0]) {
+            const off = Math.abs(pad.x - frog.x) / (pad.w / 2), perfect = off < 0.22;
+            const idx = pads.indexOf(pad);
+            score += idx + (perfect ? 2 : 0);
+            streak = perfect ? streak + 1 : 0;
+            floats.push({ x: frog.x, y: -60, t: 1, s: perfect ? 'PERFECT +' + (idx + 2) : '+' + idx });
+            Mini.sfx(perfect ? 'win' : 'pop');
+            parts.burst(frog.x - cam, S.H * 0.62, '#a5d6a7', 10, 120, 4);
+            pads.splice(0, idx);
+            while (pads.length < 7) addPad();
+          }
+          frog.pad = pad;
+          if (pad.sink) pad.sinking = true;
+        }
+      }
+      cam += (frog.x - S.W * 0.25 - cam) * Math.min(1, dt * 4);
+      flies = flies.filter((f) => f.x > cam - 60 && !f.got);
+    },
+    draw(ctx, S) {
+      const g = ctx.createLinearGradient(0, 0, 0, S.H); g.addColorStop(0, '#81d4fa'); g.addColorStop(0.55, '#e1f5fe'); g.addColorStop(0.56, '#26a69a'); g.addColorStop(1, '#00695c');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, S.W, S.H);
+      if (!pads) return;
+      const wy = S.H * 0.62;
+      ctx.fillStyle = 'rgba(255,255,255,.2)';
+      for (let i = 0; i < 12; i++) { const x = ((i * 157 - cam * 0.6) % (S.W + 100) + S.W + 100) % (S.W + 100) - 50; ctx.fillRect(x, wy + 20 + (i % 4) * 40 + Math.sin(water + i) * 3, 40, 3); }
+      Mini.emoji(ctx, '🌳', ((-cam * 0.2) % S.W + S.W) % S.W, wy - 60, 120); Mini.emoji(ctx, '🌾', ((S.W * 0.6 - cam * 0.3) % S.W + S.W) % S.W, wy - 18, 50);
+      for (const p of pads) {
+        const x = p.x - cam, y = wy + (p.sinking ? p.t * 18 : 0);
+        ctx.globalAlpha = p.sinking ? Math.max(0, 1 - p.t / 1.4) : 1;
+        ctx.fillStyle = p.sink ? '#9ccc65' : '#43a047';
+        ctx.beginPath(); ctx.ellipse(x, y, p.w / 2, p.w / 6, 0, 0.25, Mini.TAU - 0.25); ctx.lineTo(x, y); ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = 'rgba(0,0,0,.2)'; ctx.lineWidth = 2; ctx.stroke();
+        ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.beginPath(); ctx.ellipse(x, y, p.w * 0.11, p.w * 0.04, 0, 0, Mini.TAU); ctx.fill();
+        if (p.vx) Mini.text(ctx, '↔', x, y + p.w / 6 + 12, 14, '#e0f2f1', 'center', null);
+        ctx.globalAlpha = 1;
+      }
+      for (const f of flies) Mini.emoji(ctx, '🪰', f.x - cam + Math.sin(water * 6 + f.ph) * 8, wy + f.y + Math.cos(water * 5 + f.ph) * 6, 24);
+      if (!splashT) {
+        const fx = frog.x - cam, fy = wy - 18 + frog.y + (frog.pad && frog.pad.sinking ? frog.pad.t * 18 : 0);
+        const squash = charging ? 1 - Math.min(1, charge / CHARGE) * 0.3 : 1;
+        ctx.save(); ctx.translate(fx, fy + 18); ctx.scale(1 / squash * 0.9 + 0.1, squash); Mini.emoji(ctx, '🐸', 0, -18, 46); ctx.restore();
+        if (charging) {
+          const k = Math.min(1, charge / CHARGE), x1 = frog.x + 40 + k * MAXJ - cam;
+          ctx.fillStyle = 'rgba(255,255,255,.8)';
+          for (let i = 1; i < 10; i++) { const t = i / 10; ctx.beginPath(); ctx.arc(fx + (x1 - fx) * t, wy - 18 - Math.sin(t * Math.PI) * (70 + k * 110), 3, 0, Mini.TAU); ctx.fill(); }
+          ctx.fillStyle = 'rgba(0,0,0,.3)'; Mini.rrect(ctx, fx - 30, fy - 60, 60, 10, 5); ctx.fill();
+          ctx.fillStyle = charge > CHARGE ? '#ff5252' : '#ffeb3b'; Mini.rrect(ctx, fx - 30, fy - 60, 60 * Math.min(1, charge / CHARGE), 10, 5); ctx.fill();
+        }
+      }
+      parts.draw(ctx);
+      for (const f of floats) { ctx.globalAlpha = Math.min(1, f.t * 2); Mini.text(ctx, f.s, f.x - cam, wy + f.y - 40, 20, '#fff59d'); }
+      ctx.globalAlpha = 1;
+      const top = S.top + 14;
+      Mini.text(ctx, String(score), S.W / 2, top + 22, 36, '#fff', 'center', 'rgba(0,80,80,.6)');
+      if (streak > 1) Mini.text(ctx, '🎯 ×' + streak, S.W / 2, top + 56, 16, '#fff59d', 'center', 'rgba(0,80,80,.6)');
+    },
+  });
+})();
+</script>
+</body>
+</html>

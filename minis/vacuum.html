@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Coin Vacuum</title>
+<script src="../cookies.js" defer></script>
+</head>
+<body>
+<script src="lib/matter-0.19.0.min.js"></script>
+<script src="mini.js"></script>
+<script>
+(() => {
+  const { Engine, Bodies, Body, Composite } = Matter;
+  const CR = 15, GUTTER = 54, START = 40;
+  const parts = Mini.particles();
+  let engine, T, pusher, items, hand, won, dropCd, idleT, floats, acc, drops;
+  function table(S) { const w = Math.min(S.W - 20, 420), h = Math.min(S.bot - S.top - 170, 440); T = { x: (S.W - w) / 2, y: S.top + 110, w, h }; }
+  function addItem(x, y, kind = 'coin') {
+    const r = kind === 'coin' ? CR : kind === 'bag' ? 22 : 18;
+    const b = Bodies.circle(x, y, r, { frictionAir: 0.06, friction: 0.01, restitution: 0.05, density: kind === 'coin' ? 0.002 : 0.003, label: kind });
+    b.kind = kind; b.r = r; items.push(b); Composite.add(engine.world, b);
+    return b;
+  }
+  const VALUE = { coin: 1, bag: 8, gem: 20 };
+  Mini.game({
+    id: 'vacuum', title: 'Coin Vacuum', icon: '💰',
+    tagline: 'The bank vault\'s coin pusher is jackpot-ready. Drop coins, let the pusher shove the pile, and vacuum up everything that falls!',
+    how: '👆 Tap above the table to drop a coin in front of the pusher.<br>⬇️ Coins pushed off the front edge are yours. The corner gutters eat them!<br>💰 bags = 8 coins · 💎 gems = 20 coins.',
+    init(S) {
+      table(S);
+      if (engine) { Composite.clear(engine.world, false); Engine.clear(engine); }
+      // a gentle tilt toward the front edge stands in for coins toppling off stacks in a real machine
+      engine = Engine.create(); engine.gravity.y = 0.018;
+      items = []; floats = []; hand = START; won = 0; dropCd = 0; idleT = 0; acc = 0; drops = 0; parts.clear();
+      const wall = { isStatic: true, friction: 0 };
+      Composite.add(engine.world, [Bodies.rectangle(T.x - 20, T.y + T.h / 2 - 30, 40, T.h + 60, wall), Bodies.rectangle(T.x + T.w + 20, T.y + T.h / 2 - 30, 40, T.h + 60, wall)]);
+      pusher = Bodies.rectangle(T.x + T.w / 2, T.y + 30, T.w, 60, { isStatic: true, friction: 0 });
+      Composite.add(engine.world, pusher);
+      for (let i = 0; i < 40; i++) addItem(Mini.rand(T.x + CR + 4, T.x + T.w - CR - 4), Mini.rand(T.y + 150, T.y + T.h - 30));
+      addItem(T.x + T.w * 0.3, T.y + T.h * 0.7, 'bag'); addItem(T.x + T.w * 0.7, T.y + T.h * 0.55, 'gem');
+    },
+    resize(S) { if (T) { /* keep the physics table where it is; canvas just re-fits */ } },
+    down(x, y, S) {
+      if (dropCd > 0 || hand <= 0) return;
+      if (y > T.y + 150) return;
+      hand--; drops++; dropCd = 0.22; idleT = 0;
+      const px = Mini.clamp(x, T.x + CR + 2, T.x + T.w - CR - 2);
+      const front = pusher.position.y + 30;
+      const kind = drops % 50 === 0 ? 'gem' : drops % 20 === 0 ? 'bag' : 'coin';
+      const b = addItem(px, front + CR + 2, kind);
+      Body.setVelocity(b, { x: Mini.rand(-1, 1), y: 2.5 });
+      Mini.sfx('tap');
+    },
+    update(dt, S) {
+      parts.update(dt);
+      floats.forEach((f) => { f.t -= dt; f.y -= 40 * dt; }); floats = floats.filter((f) => f.t > 0);
+      dropCd -= dt;
+      acc += dt;
+      while (acc >= 1 / 60) {
+        const t = S.time, y = T.y + 30 + (Math.sin(t * 1.6) * 0.5 + 0.5) * 110, prev = pusher.position.y;
+        Body.setPosition(pusher, { x: T.x + T.w / 2, y }); Body.setVelocity(pusher, { x: 0, y: y - prev });
+        Engine.update(engine, 1000 / 60); acc -= 1 / 60;
+      }
+      for (const b of items) {
+        if (b.done) continue;
+        if (b.position.y < pusher.position.y + 30 + b.r - 2 && b.position.y > pusher.position.y - 30) Body.setPosition(b, { x: b.position.x, y: pusher.position.y + 30 + b.r });
+        if (b.position.y - b.r > T.y + T.h) {
+          b.done = true; Composite.remove(engine.world, b);
+          const x = b.position.x, gutter = x < T.x + GUTTER || x > T.x + T.w - GUTTER;
+          if (gutter) { floats.push({ x, y: T.y + T.h + 10, t: 0.8, s: '✗', c: '#ef9a9a' }); Mini.sfx('tap'); }
+          else { const v = VALUE[b.kind]; hand += v; won += v; idleT = 0; floats.push({ x, y: T.y + T.h + 10, t: 1, s: '+' + v, c: '#fff59d' }); parts.burst(x, T.y + T.h + 10, '#ffd54f', b.kind === 'coin' ? 5 : 18, 140, 4); Mini.sfx(b.kind === 'coin' ? 'coin' : 'win'); }
+        }
+      }
+      items = items.filter((b) => !b.done);
+      if (hand <= 0) { idleT += dt; if (idleT > 6) { S.over(won, 'OUT OF COINS', 'You vacuumed up ' + won + ' coins'); } }
+    },
+    draw(ctx, S) {
+      const g = ctx.createLinearGradient(0, 0, 0, S.H); g.addColorStop(0, '#263238'); g.addColorStop(1, '#102027');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, S.W, S.H);
+      if (!T) return;
+      // cabinet
+      ctx.fillStyle = '#4a148c'; Mini.rrect(ctx, T.x - 16, T.y - 70, T.w + 32, T.h + 130, 18); ctx.fill();
+      ctx.fillStyle = '#1b5e20'; ctx.fillRect(T.x, T.y, T.w, T.h);
+      ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.fillRect(T.x, T.y + T.h - 8, GUTTER, 8); ctx.fillRect(T.x + T.w - GUTTER, T.y + T.h - 8, GUTTER, 8);
+      ctx.fillStyle = 'rgba(255,255,255,.08)'; for (let i = 1; i < 6; i++) ctx.fillRect(T.x, T.y + T.h * i / 6, T.w, 1);
+      ctx.fillStyle = '#ffd54f'; ctx.fillRect(T.x + GUTTER, T.y + T.h - 3, T.w - 2 * GUTTER, 3);
+      Mini.text(ctx, '⬇ DROP ZONE ⬇', S.W / 2, T.y - 40, 14, '#e1bee7', 'center', null);
+      // pusher
+      if (pusher) {
+        const py = pusher.position.y;
+        ctx.fillStyle = '#90a4ae'; ctx.fillRect(T.x, T.y - 10, T.w, py + 30 - T.y + 10);
+        ctx.fillStyle = '#cfd8dc'; ctx.fillRect(T.x, py + 24, T.w, 6);
+        ctx.fillStyle = 'rgba(0,0,0,.15)'; for (let x = T.x + 10; x < T.x + T.w; x += 30) ctx.fillRect(x, T.y, 2, py + 24 - T.y);
+      }
+      for (const b of items || []) {
+        const { x, y } = b.position;
+        if (b.kind === 'coin') {
+          ctx.fillStyle = '#c79100'; ctx.beginPath(); ctx.arc(x + 1.5, y + 2, CR, 0, Mini.TAU); ctx.fill();
+          ctx.fillStyle = '#ffca28'; ctx.beginPath(); ctx.arc(x, y, CR, 0, Mini.TAU); ctx.fill();
+          ctx.strokeStyle = '#ffe082'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, CR - 4, 0, Mini.TAU); ctx.stroke();
+          Mini.text(ctx, '$', x, y + 1, 13, '#c79100', 'center', null);
+        } else Mini.emoji(ctx, b.kind === 'bag' ? '💰' : '💎', x, y, b.r * 2.2);
+      }
+      parts.draw(ctx);
+      for (const f of floats || []) { ctx.globalAlpha = Math.min(1, f.t * 2); Mini.text(ctx, f.s, f.x, f.y, 20, f.c); }
+      ctx.globalAlpha = 1;
+      const top = S.top + 14;
+      Mini.text(ctx, '🪙 ' + hand, 14, top + 20, 22, '#ffd54f', 'left');
+      Mini.text(ctx, 'Won ' + won, S.W - 60, top + 20, 18, '#fff', 'right');
+      if (hand <= 0 && S.state === 'play') Mini.text(ctx, 'Last coins rolling… ' + Math.max(0, Math.ceil(6 - idleT)), S.W / 2, T.y + T.h + 40, 16, '#fff');
+    },
+  });
+})();
+</script>
+</body>
+</html>

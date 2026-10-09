@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Pac-Horde</title>
+<script src="../cookies.js" defer></script>
+</head>
+<body>
+<script src="mini.js"></script>
+<script>
+(() => {
+  const MAZE = [
+    '###################',
+    '#........#........#',
+    '#o##.###.#.###.##o#',
+    '#.................#',
+    '#.##.#.#####.#.##.#',
+    '#....#...#...#....#',
+    '####.### # ###.####',
+    '   #.#       #.#   ',
+    '####.# ##-## #.####',
+    '    .  #   #  .    ',
+    '####.# ##### #.####',
+    '   #.#       #.#   ',
+    '####.# ##### #.####',
+    '#........#........#',
+    '#.##.###.#.###.##.#',
+    '#o.#...........#.o#',
+    '##.#.#.#####.#.#.##',
+    '#....#...#...#....#',
+    '#.######.#.######.#',
+    '#.................#',
+    '###################',
+  ];
+  const W = MAZE[0].length, H = MAZE.length, DOOR = [9, 8], HOUSE = [9, 9];
+  const DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] }, NAMES = Object.keys(DIRS);
+  const GHOSTS = [['#ff1744', [W - 2, 0]], ['#ff80ab', [1, 0]], ['#00e5ff', [W - 2, H - 1]], ['#ffab40', [1, H - 1]]];
+  let dots, pac, ghosts, score, lives, level, frightT, eatChain, modeT, scatter, readyT, deadT, total, tile, ox, oy, flash;
+  const wall = (x, y) => { if (x < 0 || x >= W) return y !== 9; const c = (MAZE[y] || '')[x]; return c === '#' || c === undefined; };
+  const blocked = (x, y, g) => wall(x, y) || (!g && x === DOOR[0] && y === DOOR[1]) || (g && g.out && x === DOOR[0] && y === DOOR[1] && !g.eaten);
+  function layout(S) { tile = Math.floor(Math.min((S.W - 8) / W, (S.bot - S.top - 90) / H)); ox = (S.W - tile * W) / 2; oy = S.top + 60 + Math.max(0, (S.bot - S.top - 90 - tile * H) / 2); }
+  function resetActors() {
+    pac = { tx: 9, ty: 15, nx: 9, ny: 15, t: 1, dir: 'left', want: 'left', mouth: 0 };
+    ghosts = GHOSTS.map(([color, corner], i) => ({ color, corner, tx: i === 0 ? 9 : 8 + (i % 3), ty: i === 0 ? 7 : 9, nx: i === 0 ? 9 : 8 + (i % 3), ny: i === 0 ? 7 : 9, t: 1, dir: 'left', out: i === 0, release: i * 3.5, eaten: false }));
+    frightT = 0; readyT = 1.8; deadT = 0; modeT = 0; scatter = true;
+  }
+  function newLevel() {
+    dots = MAZE.map((row) => [...row].map((c) => (c === '.' ? 1 : c === 'o' ? 2 : 0)));
+    total = dots.flat().filter(Boolean).length;
+    resetActors();
+  }
+  const speedPac = () => 7.2 + Math.min(2, level * 0.3), speedGhost = (g) => (g.eaten ? 14 : frightT > 0 ? 4.2 : (g.tx < 0 || g.tx >= W || (g.ty === 9 && (g.tx < 4 || g.tx > 14)) ? 4 : 6.4 + Math.min(2.4, level * 0.35)));
+  const pos = (e) => [e.tx + (e.nx - e.tx) * e.t, e.ty + (e.ny - e.ty) * e.t];
+  function wrapX(x) { return x < 0 ? W - 1 : x >= W ? 0 : x; }
+  function stepPac(dt) {
+    const opp = { up: 'down', down: 'up', left: 'right', right: 'left' };
+    if (pac.want === opp[pac.dir] && pac.t < 1) { [pac.tx, pac.nx] = [pac.nx, pac.tx]; [pac.ty, pac.ny] = [pac.ny, pac.ty]; pac.t = 1 - pac.t; pac.dir = pac.want; }
+    pac.t += speedPac() * dt;
+    if (pac.t >= 1) {
+      pac.tx = wrapX(pac.nx); pac.ty = pac.ny; pac.t = 1;
+      eat(pac.tx, pac.ty);
+      for (const d of [pac.want, pac.dir]) {
+        const [dx, dy] = DIRS[d], x = pac.tx + dx, y = pac.ty + dy;
+        if (!blocked(x, y)) { pac.dir = d; pac.nx = x; pac.ny = y; pac.t = 0; break; }
+      }
+      if (pac.nx < 0 || pac.nx >= W) { pac.tx = pac.nx < 0 ? W : -1; pac.nx = wrapX(pac.nx); }
+    }
+    pac.mouth += dt * 14;
+  }
+  function eat(x, y) {
+    const v = dots[y] && dots[y][x]; if (!v) return;
+    dots[y][x] = 0; total--;
+    if (v === 1) { score += 10; if (total % 2) Mini.sfx('tap'); }
+    else { score += 50; frightT = Math.max(2.5, 7 - level * 0.6); eatChain = 0; Mini.sfx('coin'); for (const g of ghosts) if (g.out && !g.eaten) reverse(g); }
+  }
+  function reverse(g) { if (g.t < 1) { [g.tx, g.nx] = [g.nx, g.tx]; [g.ty, g.ny] = [g.ny, g.ty]; g.t = 1 - g.t; } }
+  function target(g, i) {
+    if (g.eaten) return [DOOR[0], DOOR[1] + 1];
+    if (!g.out) return [DOOR[0], DOOR[1] - 1];
+    if (scatter) return g.corner;
+    const [px, py] = [pac.tx, pac.ty], [dx, dy] = DIRS[pac.dir];
+    if (i === 0) return [px, py];
+    if (i === 1) return [px + dx * 4, py + dy * 4];
+    if (i === 2) { const [bx, by] = [ghosts[0].tx, ghosts[0].ty]; return [2 * (px + dx * 2) - bx, 2 * (py + dy * 2) - by]; }
+    return Math.hypot(g.tx - px, g.ty - py) > 8 ? [px, py] : g.corner;
+  }
+  function stepGhost(g, i, dt) {
+    if (!g.out) { g.release -= dt; if (g.release > 0) return; }
+    g.t += speedGhost(g) * dt;
+    if (g.t < 1) return;
+    g.tx = wrapX(g.nx); g.ty = g.ny; g.t = 1;
+    if (!g.out && g.tx === DOOR[0] && g.ty === DOOR[1] - 1) g.out = true;
+    if (g.eaten && g.tx === DOOR[0] && g.ty === DOOR[1] + 1) { g.eaten = false; g.out = false; g.release = 0.5; }
+    const opp = { up: 'down', down: 'up', left: 'right', right: 'left' }[g.dir];
+    const opts = NAMES.filter((d) => d !== opp && !blocked(g.tx + DIRS[d][0], g.ty + DIRS[d][1], g) || (!g.out && d !== opp && g.tx + DIRS[d][0] === DOOR[0] && g.ty + DIRS[d][1] === DOOR[1]));
+    const choices = opts.length ? opts : [opp];
+    let d;
+    if (frightT > 0 && g.out && !g.eaten) d = Mini.pick(choices);
+    else { const [x, y] = target(g, i); d = choices.reduce((a, b) => { const da = Math.hypot(g.tx + DIRS[a][0] - x, g.ty + DIRS[a][1] - y), db = Math.hypot(g.tx + DIRS[b][0] - x, g.ty + DIRS[b][1] - y); return db < da ? b : a; }); }
+    g.dir = d; g.nx = g.tx + DIRS[d][0]; g.ny = g.ty + DIRS[d][1]; g.t = 0;
+    if (g.nx < 0 || g.nx >= W) { g.tx = g.nx < 0 ? W : -1; g.nx = wrapX(g.nx); }
+  }
+  function steer(d) { pac.want = d; }
+  Mini.game({
+    id: 'pac', title: 'Pac-Horde', icon: '👻',
+    tagline: 'Gobble every dot in the maze while four ghosts hunt you down. Grab a power pellet and turn the tables!',
+    how: '👆 Swipe (or arrow keys) to steer. Your turn is remembered until a path opens.<br>⚪ Power pellets make ghosts blue: eat them for big points!<br>🔁 The side tunnels wrap around.',
+    init(S) { layout(S); score = 0; lives = 3; level = 0; flash = 0; newLevel(); },
+    resize(S) { if (dots) layout(S); },
+    swipe(d) { steer(d); },
+    key(code) { const m = { ArrowUp: 'up', KeyW: 'up', ArrowDown: 'down', KeyS: 'down', ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right' }[code]; if (m) steer(m); },
+    update(dt, S) {
+      if (readyT > 0) { readyT -= dt; return; }
+      if (deadT > 0) {
+        deadT -= dt;
+        if (deadT <= 0) { if (lives <= 0) S.over(score, 'GAME OVER', 'Reached level ' + (level + 1)); else resetActors(); }
+        return;
+      }
+      if (flash > 0) { flash -= dt; if (flash <= 0) { level++; newLevel(); } return; }
+      modeT += dt;
+      const cycle = modeT % 27; const sc = cycle < 7;
+      if (sc !== scatter && frightT <= 0) { scatter = sc; ghosts.forEach((g) => g.out && reverse(g)); }
+      frightT = Math.max(0, frightT - dt);
+      stepPac(dt);
+      ghosts.forEach((g, i) => stepGhost(g, i, dt));
+      const [px, py] = pos(pac);
+      for (const g of ghosts) {
+        const [gx, gy] = pos(g);
+        if (Math.hypot(gx - px, gy - py) > 0.7 || g.eaten) continue;
+        if (frightT > 0 && g.out) { g.eaten = true; eatChain++; const pts = 200 * Math.pow(2, eatChain - 1); score += pts; Mini.sfx('win'); g.pts = { v: pts, t: 1 }; }
+        else { lives--; deadT = 1.6; Mini.sfx('lose'); return; }
+      }
+      ghosts.forEach((g) => { if (g.pts) { g.pts.t -= dt; if (g.pts.t <= 0) g.pts = null; } });
+      if (total <= 0) { flash = 1.8; score += 500; Mini.sfx('win'); }
+    },
+    draw(ctx, S) {
+      ctx.fillStyle = '#000'; ctx.fillRect(0, 0, S.W, S.H);
+      if (!dots) return;
+      const T = tile;
+      ctx.strokeStyle = flash > 0 && Math.floor(flash * 6) % 2 ? '#fff' : '#2a3cff'; ctx.lineWidth = Math.max(2, T * 0.18); ctx.lineCap = 'round';
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        if (MAZE[y][x] !== '#') continue;
+        const X = ox + x * T + T / 2, Y = oy + y * T + T / 2;
+        for (const [dx, dy] of [[1, 0], [0, 1]]) if ((MAZE[y + dy] || '')[x + dx] === '#') { ctx.beginPath(); ctx.moveTo(X, Y); ctx.lineTo(X + dx * T, Y + dy * T); ctx.stroke(); }
+        const n = [[1, 0], [-1, 0], [0, 1], [0, -1]].filter(([dx, dy]) => (MAZE[y + dy] || '')[x + dx] === '#').length;
+        if (!n) { ctx.beginPath(); ctx.arc(X, Y, T * 0.2, 0, Mini.TAU); ctx.stroke(); }
+      }
+      ctx.fillStyle = '#ffcc80'; ctx.fillRect(ox + DOOR[0] * T, oy + DOOR[1] * T + T * 0.45, T, T * 0.1);
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        const v = dots[y][x]; if (!v) continue;
+        ctx.fillStyle = '#ffd7b5'; ctx.beginPath(); ctx.arc(ox + (x + 0.5) * T, oy + (y + 0.5) * T, v === 2 ? T * (0.28 + 0.06 * Math.sin(S.time * 8)) : T * 0.1, 0, Mini.TAU); ctx.fill();
+      }
+      for (const g of ghosts) {
+        const [x, y] = pos(g), X = ox + (x + 0.5) * T, Y = oy + (y + 0.5) * T, r = T * 0.45;
+        if (g.pts) { Mini.text(ctx, String(g.pts.v), X, Y, T * 0.6, '#00e5ff'); continue; }
+        if (!g.eaten) {
+          ctx.fillStyle = frightT > 0 && g.out ? (frightT < 1.6 && Math.floor(S.time * 8) % 2 ? '#fff' : '#2333ff') : g.color;
+          ctx.beginPath(); ctx.arc(X, Y - r * 0.1, r, Math.PI, 0); ctx.lineTo(X + r, Y + r * 0.85);
+          for (let k = 0; k < 4; k++) ctx.lineTo(X + r - (k + 0.5) * r / 2, Y + r * (k % 2 ? 0.85 : 0.5));
+          ctx.lineTo(X - r, Y + r * 0.85); ctx.closePath(); ctx.fill();
+        }
+        if (!(frightT > 0 && g.out) || g.eaten) {
+          const [dx, dy] = DIRS[g.dir];
+          ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(X - r * 0.35, Y - r * 0.2, r * 0.28, 0, Mini.TAU); ctx.arc(X + r * 0.35, Y - r * 0.2, r * 0.28, 0, Mini.TAU); ctx.fill();
+          ctx.fillStyle = '#1a237e'; ctx.beginPath(); ctx.arc(X - r * 0.35 + dx * r * 0.12, Y - r * 0.2 + dy * r * 0.12, r * 0.13, 0, Mini.TAU); ctx.arc(X + r * 0.35 + dx * r * 0.12, Y - r * 0.2 + dy * r * 0.12, r * 0.13, 0, Mini.TAU); ctx.fill();
+        }
+      }
+      if (pac) {
+        const [x, y] = pos(pac), X = ox + (x + 0.5) * T, Y = oy + (y + 0.5) * T;
+        const ang = { right: 0, down: Math.PI / 2, left: Math.PI, up: -Math.PI / 2 }[pac.dir];
+        const m = deadT > 0 ? Math.min(Math.PI, (1.6 - deadT) * 2.5) : (Math.sin(pac.mouth) * 0.5 + 0.5) * 0.7 + 0.04;
+        ctx.fillStyle = '#ffeb3b'; ctx.beginPath(); ctx.moveTo(X, Y); ctx.arc(X, Y, T * 0.46, ang + m, ang + Mini.TAU - m); ctx.closePath(); ctx.fill();
+      }
+      const top = S.top + 14;
+      Mini.text(ctx, String(score), S.W / 2, top + 18, 24, '#fff');
+      for (let i = 0; i < lives; i++) { ctx.fillStyle = '#ffeb3b'; ctx.beginPath(); ctx.moveTo(22 + i * 24, top + 18); ctx.arc(22 + i * 24, top + 18, 9, 0.6, Mini.TAU - 0.6); ctx.fill(); }
+      Mini.text(ctx, 'L' + (level + 1), S.W - 60, top + 18, 18, '#fff', 'right');
+      if (readyT > 0) Mini.text(ctx, 'READY!', S.W / 2, oy + 11.5 * T, T * 1.2, '#ffeb3b');
+    },
+  });
+})();
+</script>
+</body>
+</html>

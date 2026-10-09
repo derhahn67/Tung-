@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Catnip Rush</title>
+<script src="../cookies.js" defer></script>
+</head>
+<body>
+<script src="mini.js"></script>
+<script>
+(() => {
+  const GRAV = 1500, JUMP = 760, SPRING = 1250, PW = 72, PH = 14;
+  const parts = Mini.particles();
+  let cat, plats, foes, fish, cam, high, fishN, nextY, targetX, floats, bonus;
+  function addPlatform(S, y) {
+    const h = -y, r = Math.random();
+    const kind = h > 800 && r < 0.12 ? 'break' : h > 1500 && r < 0.27 ? 'move' : h > 3000 && r < 0.36 ? 'vanish' : 'normal';
+    const p = { x: Mini.rand(8, S.W - PW - 8), y, kind, vx: kind === 'move' ? Mini.pick([-1, 1]) * Mini.rand(60, 110 + h / 80) : 0 };
+    if (kind !== 'break' && Math.random() < 0.08) p.spring = true;
+    plats.push(p);
+    if (kind !== 'break' && Math.random() < 0.12) fish.push({ x: p.x + PW / 2, y: y - 40 });
+    if (h > 1200 && Math.random() < Math.min(0.08, h / 40000)) foes.push({ x: Mini.rand(30, S.W - 30), y: y - 120, ph: Math.random() * 6 });
+  }
+  function fill(S) { while (nextY > cam - 200) { addPlatform(S, nextY); nextY -= Mini.rand(62, Math.min(150, 85 + -nextY / 90)); } }
+  Mini.game({
+    id: 'cat', title: 'Catnip Rush', icon: '🐱',
+    tagline: 'A cat on a catnip high! Bounce higher and higher through the living room, but don\'t look down.',
+    how: '👆 Hold the left or right side (or drag, or ←/→) to steer. You bounce automatically.<br>🧶 Yarn = super jump · 📦 boxes crumble · 💨 some cushions vanish.<br>🤖 Land on vacuums to squash them, but don\'t bump into them!',
+    init(S) {
+      cat = { x: S.W / 2, y: S.bot - 120, vx: 0, vy: -JUMP, face: 1 };
+      plats = [{ x: S.W / 2 - PW / 2, y: S.bot - 60, kind: 'normal', vx: 0 }]; foes = []; fish = []; floats = [];
+      cam = 0; high = 0; fishN = 0; bonus = 0; nextY = S.bot - 140; targetX = null; parts.clear(); fill(S);
+    },
+    down(x) { targetX = x; }, move(x) { targetX = x; }, up() { targetX = null; },
+    update(dt, S) {
+      parts.update(dt);
+      floats.forEach((f) => { f.t -= dt; f.y -= 40 * dt; }); floats = floats.filter((f) => f.t > 0);
+      let ax = 0;
+      if (S.keys.has('ArrowLeft') || S.keys.has('KeyA')) ax = -1;
+      if (S.keys.has('ArrowRight') || S.keys.has('KeyD')) ax = 1;
+      if (targetX != null) {
+        const P = S.pointer, dragged = Math.abs(P.x - P.sx) > 20;
+        if (dragged) cat.vx = Mini.clamp((targetX - cat.x) * 6, -420, 420);
+        else cat.vx = targetX < S.W / 2 ? -360 : 360;
+      } else cat.vx = ax ? ax * 380 : cat.vx * Math.pow(0.02, dt);
+      if (Math.abs(cat.vx) > 20) cat.face = Math.sign(cat.vx);
+      cat.vy += GRAV * dt; cat.x += cat.vx * dt; cat.y += cat.vy * dt;
+      if (cat.x < -20) cat.x = S.W + 20; if (cat.x > S.W + 20) cat.x = -20;
+      for (const p of plats) {
+        if (p.kind === 'move') { p.x += p.vx * dt; if (p.x < 4 || p.x > S.W - PW - 4) p.vx = -p.vx; }
+        if (p.gone || cat.vy <= 0) continue;
+        const feet = cat.y + 18;
+        if (feet >= p.y && feet - cat.vy * dt <= p.y + 4 && cat.x > p.x - 12 && cat.x < p.x + PW + 12) {
+          if (p.kind === 'break') { p.gone = true; p.fall = 0; parts.burst(p.x + PW / 2, p.y, '#a1887f', 10, 120, 5); Mini.sfx('hit'); continue; }
+          cat.y = p.y - 18;
+          if (p.spring && cat.x > p.x + PW / 2 - 22 && cat.x < p.x + PW / 2 + 22) { cat.vy = -SPRING; Mini.sfx('coin'); floats.push({ x: cat.x, y: cat.y - 30, t: 0.8, s: 'BOING!' }); }
+          else { cat.vy = -JUMP; Mini.sfx('jump'); }
+          if (p.kind === 'vanish') { p.gone = true; parts.burst(p.x + PW / 2, p.y, '#e1bee7', 12, 120, 5); }
+        }
+      }
+      for (const f of foes) {
+        f.ph += dt; f.x += Math.sin(f.ph * 1.5) * 60 * dt;
+        if (f.dead || Math.hypot(f.x - cat.x, f.y - cat.y) > 34) continue;
+        if (cat.vy > 0 && cat.y < f.y - 8) { f.dead = true; cat.vy = -JUMP * 1.1; Mini.sfx('pop'); parts.burst(f.x, f.y, '#90a4ae', 20, 200, 5); floats.push({ x: f.x, y: f.y, t: 1, s: '+100' }); bonus += 100; }
+        else { Mini.sfx('hit'); S.over(Math.floor(high / 10) + fishN * 50 + bonus, 'VACUUMED UP!', Math.floor(high / 10) + ' m · 🐟 ' + fishN); return; }
+      }
+      for (const f of fish) if (!f.got && Math.hypot(f.x - cat.x, f.y - cat.y) < 30) { f.got = true; fishN++; Mini.sfx('coin'); floats.push({ x: f.x, y: f.y, t: 0.8, s: '🐟 +50' }); }
+      const want = cat.y - S.H * 0.42;
+      if (want < cam) cam = want;
+      high = Math.max(high, (S.bot - 120) - cat.y);
+      fill(S);
+      plats = plats.filter((p) => p.y < cam + S.H + 60 && !(p.gone && p.kind === 'vanish'));
+      plats.forEach((p) => { if (p.gone && p.kind === 'break') { p.fall += dt; p.y += 400 * dt; } });
+      foes = foes.filter((f) => f.y < cam + S.H + 80 && !f.dead); fish = fish.filter((f) => f.y < cam + S.H + 60 && !f.got);
+      if (cat.y > cam + S.H + 40) { Mini.sfx('lose'); S.over(Math.floor(high / 10) + fishN * 50 + bonus, 'CAT-ASTROPHE!', Math.floor(high / 10) + ' m · 🐟 ' + fishN); }
+    },
+    draw(ctx, S) {
+      const band = Math.floor(-(cam || 0) / 1200);
+      const cols = [['#fce4ec', '#f8bbd0'], ['#e3f2fd', '#bbdefb'], ['#f3e5f5', '#e1bee7'], ['#e8f5e9', '#c8e6c9'], ['#fff8e1', '#ffecb3']][band % 5];
+      ctx.fillStyle = cols[0]; ctx.fillRect(0, 0, S.W, S.H);
+      ctx.fillStyle = cols[1];
+      const off = ((cam || 0) * 0.5) % 80;
+      for (let y = -80 - off; y < S.H; y += 80) for (let x = 0; x < S.W; x += 80) if (((x / 80) + Math.floor((y + off) / 80)) % 2 === 0) ctx.fillRect(x, y, 80, 80);
+      if (!cat) return;
+      ctx.save(); ctx.translate(0, -cam);
+      for (const p of plats) {
+        if (p.kind === 'break') { ctx.fillStyle = '#bcaaa4'; Mini.rrect(ctx, p.x, p.y, PW, PH + 4, 3); ctx.fill(); ctx.strokeStyle = '#8d6e63'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(p.x + PW / 2 - 4, p.y); ctx.lineTo(p.x + PW / 2 + 4, p.y + PH + 4); ctx.stroke(); continue; }
+        ctx.fillStyle = p.kind === 'move' ? '#4fc3f7' : p.kind === 'vanish' ? 'rgba(206,147,216,.85)' : '#ef5350';
+        Mini.rrect(ctx, p.x, p.y, PW, PH, 7); ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,.35)'; Mini.rrect(ctx, p.x + 6, p.y + 2, PW - 12, 4, 2); ctx.fill();
+        if (p.spring) Mini.emoji(ctx, '🧶', p.x + PW / 2, p.y - 10, 24);
+      }
+      for (const f of fish) Mini.emoji(ctx, '🐟', f.x, f.y + Math.sin(S.time * 4 + f.x) * 4, 26);
+      for (const f of foes) Mini.emoji(ctx, '🤖', f.x, f.y, 40, Math.sin(f.ph * 3) * 0.15);
+      Mini.emoji(ctx, '🐱', cat.x, cat.y, 44, Mini.clamp(cat.vx / 1500, -0.3, 0.3), cat.face > 0);
+      parts.draw(ctx);
+      for (const f of floats) { ctx.globalAlpha = Math.min(1, f.t * 2); Mini.text(ctx, f.s, f.x, f.y, 18, '#ad1457', 'center', 'rgba(255,255,255,.8)'); }
+      ctx.globalAlpha = 1;
+      ctx.restore();
+      const top = S.top + 14;
+      Mini.text(ctx, Math.floor((high || 0) / 10) + ' m', S.W / 2, top + 18, 26, '#880e4f', 'center', 'rgba(255,255,255,.85)');
+      Mini.text(ctx, '🐟 ' + (fishN || 0), 14, top + 18, 18, '#880e4f', 'left', 'rgba(255,255,255,.85)');
+    },
+  });
+})();
+</script>
+</body>
+</html>

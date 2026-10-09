@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Angry Grandma</title>
+<script src="../cookies.js" defer></script>
+</head>
+<body>
+<script src="lib/matter-0.19.0.min.js"></script>
+<script src="mini.js"></script>
+<script>
+(() => {
+  const { Engine, Bodies, Body, Composite, Events } = Matter;
+  const GROUND = 600, WORLD_W = 1080, SLING = { x: 130, y: GROUND - 120 }, MAXPULL = 105, POWER = 0.165, XOFF = -60;
+  const MAT = {
+    wood: { hp: 7, color: '#c58b4a', edge: '#7b4a1e', density: 0.0012, pts: 500 },
+    glass: { hp: 2.5, color: 'rgba(170,220,255,0.75)', edge: '#5aa9d6', density: 0.0008, pts: 300 },
+    stone: { hp: 16, color: '#9aa1a8', edge: '#5f666d', density: 0.003, pts: 800 },
+  };
+  const parts = Mini.particles();
+  let engine, world, blocks, birds, bag, bagsLeft, state, aimFrom, level, score, levelScore, cam, camT, settleT, startT, banner, acc, slammed, floats, trail, introT;
+
+  /* ---------- level design: x is the centre, y the bottom of each piece (0 = ground) ---------- */
+  const LEVELS = [
+    (L) => { L.b(620, 0, 20, 110); L.b(720, 0, 20, 110); L.b(670, 110, 140, 18); L.p(670, 0); L.p(670, 128); },
+    (L) => { for (let s = 0; s < 3; s++) { const y = s * 98; L.b(640, y, 18, 80); L.b(740, y, 18, 80); L.b(690, y + 80, 130, 18); L.p(690, y); } L.p(690, 294); },
+    (L) => { L.b(660, 0, 160, 40, 'stone'); L.b(600, 40, 16, 90, 'glass'); L.b(720, 40, 16, 90, 'glass'); L.b(660, 130, 150, 14, 'glass'); L.p(660, 40); L.p(660, 144);
+      L.b(860, 0, 20, 140); L.b(940, 0, 20, 140); L.b(900, 140, 110, 18); L.p(900, 0); L.p(900, 158); },
+    (L) => { const n = 5; for (let r = 0; r < n; r++) for (let i = 0; i < n - r; i++) L.b(640 + i * 62 + r * 31, r * 50, 58, 50, r % 2 ? 'glass' : 'wood'); L.p(640 + 2 * 31 * 2 + 0, n * 50); L.p(580, 0); L.p(990, 0); },
+    (L) => { for (const x of [620, 900]) { L.b(x - 45, 0, 18, 170, 'stone'); L.b(x + 45, 0, 18, 170, 'stone'); L.b(x, 170, 120, 18); L.b(x, 188, 18, 60, 'glass'); L.p(x, 0); L.p(x, 248); } L.b(760, 0, 60, 60, 'wood'); L.p(760, 60); },
+    (L) => { L.b(700, 0, 300, 30, 'stone'); for (let i = 0; i < 4; i++) { L.b(580 + i * 80, 30, 16, 100, i % 2 ? 'glass' : 'wood'); } L.b(700, 130, 280, 16); for (let i = 0; i < 3; i++) L.p(620 + i * 80, 30); L.b(700, 146, 16, 80, 'glass'); L.p(700, 226); L.p(660, 146); L.p(740, 146); },
+  ];
+  function genLevel(L, n) {
+    const towers = 2 + Math.min(3, Math.floor(n / 3));
+    for (let t = 0; t < towers; t++) {
+      const x = 600 + t * (480 / towers) + Mini.rand(-15, 15), floors = Mini.randInt(1, 2 + Math.min(3, Math.floor(n / 4))), w = Mini.rand(90, 130);
+      let y = 0;
+      for (let f = 0; f < floors; f++) {
+        const mat = Mini.pick(n > 8 ? ['wood', 'stone', 'glass'] : ['wood', 'wood', 'glass']), h = Mini.rand(70, 100);
+        L.b(x - w / 2 + 9, y, 18, h, mat); L.b(x + w / 2 - 9, y, 18, h, mat); L.b(x, y + h, w + 10, 16, Mini.pick(['wood', 'stone', 'glass']));
+        L.p(x, y); y += h + 16;
+      }
+      L.p(x, y);
+    }
+  }
+  function buildLevel(n) {
+    if (engine) { Composite.clear(world, false); Engine.clear(engine); }
+    engine = Engine.create({ enableSleeping: true }); world = engine.world;
+    engine.gravity.y = 1;
+    Composite.add(world, [Bodies.rectangle(WORLD_W / 2, GROUND + 50, WORLD_W * 3, 100, { isStatic: true, label: 'ground', friction: 0.9 }),
+      Bodies.rectangle(WORLD_W + 400, GROUND - 500, 60, 1000, { isStatic: true, label: 'wall' })]);
+    blocks = []; birds = [];
+    const L = {
+      b(x, y, w, h, mat = 'wood') {
+        const M = MAT[mat];
+        const body = Bodies.rectangle(x + XOFF, GROUND - y - h / 2, w, h, { density: M.density, friction: 0.8, restitution: 0.05, label: 'block', sleepThreshold: 40 });
+        body.mat = mat; body.hp = M.hp * (w * h > 3000 ? 1.5 : 1); body.w = w; body.h = h;
+        blocks.push(body); Composite.add(world, body);
+      },
+      p(x, y) {
+        const body = Bodies.circle(x + XOFF, GROUND - y - 14, 14, { density: 0.0015, friction: 0.6, restitution: 0.3, label: 'pigeon', sleepThreshold: 40 });
+        body.hp = 1; birds.push(body); Composite.add(world, body);
+      },
+    };
+    if (n < LEVELS.length) LEVELS[n](L); else genLevel(L, n);
+    bagsLeft = Math.max(3, Math.min(5, birds.length + 1));
+    bag = null; state = 'aim'; settleT = 0; startT = 0; levelScore = 0; slammed = false; trail = [];
+    banner = { text: 'Level ' + (n + 1), t: 1.6 };
+    cam = 0; camT = 0; introT = 1.8;
+    Events.on(engine, 'collisionStart', onCollide);
+  }
+  function hurtBody(b, dmg) {
+    if (b.dead || dmg <= 0) return;
+    b.hp -= dmg;
+    if (b.hp > 0) return;
+    b.dead = true;
+    const pos = b.position;
+    Composite.remove(world, b);
+    if (b.label === 'pigeon') {
+      birds = birds.filter((x) => x !== b); addScore(5000, pos); parts.burst(pos.x, pos.y, '#cfd8dc', 16, 220, 6); Mini.sfx('pop');
+    } else {
+      blocks = blocks.filter((x) => x !== b); addScore(MAT[b.mat].pts, pos); parts.burst(pos.x, pos.y, MAT[b.mat].edge, 12, 180, 6); Mini.sfx(b.mat === 'glass' ? 'pop' : 'hit');
+    }
+  }
+  function addScore(v, pos) { score += v; levelScore += v; floats.push({ x: pos.x, y: pos.y - 20, t: 1, text: '+' + v }); }
+  function onCollide(ev) {
+    if (startT < 1.2) return;
+    for (const pr of ev.pairs) {
+      const a = pr.bodyA, b = pr.bodyB;
+      const rv = Math.hypot(a.velocity.x - b.velocity.x, a.velocity.y - b.velocity.y);
+      if (rv < 1.6) continue;
+      const hit = (x, other) => {
+        if (x.label !== 'block' && x.label !== 'pigeon') return;
+        let dmg = rv - 1.4;
+        if (other.label === 'bag') dmg *= slammed ? 2.6 : 1.7;
+        if (x.label === 'pigeon') dmg *= 1.6;
+        else if (other.mass > x.mass * 2) dmg *= 1.4;
+        hurtBody(x, dmg);
+      };
+      hit(a, b); hit(b, a);
+    }
+  }
+  function launch(px, py) {
+    const dx = SLING.x - px, dy = SLING.y - py;
+    bag = Bodies.circle(SLING.x, SLING.y, 15, { density: 0.006, frictionAir: 0, restitution: 0.25, friction: 0.5, label: 'bag' });
+    Composite.add(world, bag);
+    Body.setVelocity(bag, { x: dx * POWER, y: dy * POWER });
+    Body.setAngularVelocity(bag, 0.2);
+    bagsLeft--; state = 'fly'; settleT = 0; slammed = false; trail = [];
+    Mini.sfx('swoosh');
+  }
+  // input in world coordinates
+  const toWorld = (x, y, S) => ({ x: x / cam.s + cam.x, y: y / cam.s + cam.y });
+  function clampPull(w) {
+    const dx = w.x - SLING.x, dy = w.y - SLING.y, d = Math.hypot(dx, dy) || 1, k = Math.min(1, MAXPULL / d);
+    return { x: SLING.x + dx * k, y: SLING.y + dy * k };
+  }
+  function layout(S) {
+    // portrait phones zoom out to ~700 world units; wider screens show the whole level
+    const s = S.W / S.H < 1.1 ? Math.min(S.W / 700, S.H / 660) : Math.min(S.H / 660, S.W / 1000);
+    const viewW = S.W / s, viewH = S.H / s, maxX = Math.max(0, 1000 - viewW);
+    const target = state === 'fly' && bag ? Mini.clamp(bag.position.x - viewW * 0.35, 0, maxX) : introT > 0 || state === 'next' ? maxX : 0;
+    const cx = cam && cam.x != null ? cam.x + (target - cam.x) * 0.12 : 0;
+    cam = { s, x: cx, y: GROUND + 60 - viewH, vw: viewW };
+  }
+
+  Mini.game({
+    id: 'grandma', title: 'Angry Grandma', icon: '👵',
+    tagline: 'Those pigeons ate her sandwich. Now it\'s personal. Fling Grandma\'s heavy handbag and topple their towers!',
+    how: '👆 Drag back from the slingshot and release to fling the handbag.<br>🧱 Tap while it flies to <b>slam down</b> (Brick power).<br>🐦 Pop every pigeon to clear the level.',
+    init(S) { level = 0; score = 0; floats = []; parts.clear(); buildLevel(0); layout(S); },
+    down(x, y, S) {
+      if (state === 'fly' && bag && !slammed) { slammed = true; Body.setVelocity(bag, { x: bag.velocity.x * 0.4, y: 18 }); Mini.sfx('boom'); return; }
+      if (state !== 'aim') return;
+      aimFrom = clampPull(toWorld(x, y, S)); state = 'pull';
+    },
+    move(x, y, S) { if (state === 'pull') aimFrom = clampPull(toWorld(x, y, S)); },
+    up(x, y, S) {
+      if (state !== 'pull') return;
+      if (Math.hypot(aimFrom.x - SLING.x, aimFrom.y - SLING.y) < 20) { state = 'aim'; return; }
+      launch(aimFrom.x, aimFrom.y);
+    },
+    update(dt, S) {
+      startT += dt; introT = Math.max(0, introT - dt);
+      acc = (acc || 0) + dt;
+      while (acc >= 1 / 60) { Engine.update(engine, 1000 / 60); acc -= 1 / 60; }
+      for (const b of birds.concat(blocks)) if (b.position.y > GROUND + 200 || b.position.x < -200 || b.position.x > WORLD_W + 500) hurtBody(b, 999);
+      parts.update(dt);
+      floats.forEach((f) => { f.t -= dt; f.y -= 30 * dt; }); floats = floats.filter((f) => f.t > 0);
+      if (banner) { banner.t -= dt; if (banner.t <= 0) banner = null; }
+      if (state === 'fly') {
+        if (bag) { trail.push([bag.position.x, bag.position.y]); if (trail.length > 60) trail.shift(); }
+        settleT += dt;
+        const slow = bag && Math.hypot(bag.velocity.x, bag.velocity.y) < 0.4;
+        const gone = !bag || bag.position.x > WORLD_W + 300 || bag.position.x < -100;
+        if ((slow && settleT > 1.5) || gone || settleT > 9 || (!birds.length && settleT > 1.2)) {
+          if (bag) { Composite.remove(world, bag); bag = null; }
+          if (!birds.length) {
+            const bonus = bagsLeft * 10000; score += bonus;
+            banner = { text: 'Cleared! +' + bonus + ' bonus', t: 2 }; Mini.sfx('win');
+            state = 'next'; settleT = 0;
+          } else if (bagsLeft <= 0) { state = 'done'; settleT = 0; }
+          else { state = 'aim'; camT = 0; }
+        }
+      } else if (state === 'next') {
+        settleT += dt; if (settleT > 2) { level++; buildLevel(level); }
+      } else if (state === 'done') {
+        settleT += dt;
+        if (!birds.length) { state = 'next'; settleT = 0; } else if (settleT > 1.5) S.over(score, 'OUT OF HANDBAGS', 'Reached level ' + (level + 1));
+      }
+      layout(S);
+    },
+    draw(ctx, S) {
+      if (!cam) layout(S);
+      const sky = ctx.createLinearGradient(0, 0, 0, S.H);
+      sky.addColorStop(0, '#7ec8f5'); sky.addColorStop(1, '#d9f1ff');
+      ctx.fillStyle = sky; ctx.fillRect(0, 0, S.W, S.H);
+      ctx.save(); ctx.scale(cam.s, cam.s); ctx.translate(-cam.x, -cam.y);
+      // scenery
+      ctx.fillStyle = 'rgba(255,255,255,0.8)';
+      for (const [x, y, r] of [[200, 160, 40], [520, 110, 55], [880, 180, 45], [1100, 120, 50]]) { ctx.beginPath(); ctx.arc(x - cam.x * 0.4, y, r, 0, Mini.TAU); ctx.arc(x + r - cam.x * 0.4, y + 10, r * 0.8, 0, Mini.TAU); ctx.fill(); }
+      ctx.fillStyle = '#7cb342'; ctx.fillRect(-500, GROUND, WORLD_W + 1500, 400);
+      ctx.fillStyle = '#558b2f'; ctx.fillRect(-500, GROUND, WORLD_W + 1500, 12);
+      Mini.emoji(ctx, '🌳', -20, GROUND - 60, 120); Mini.emoji(ctx, '🪑', 290, GROUND - 20, 44);
+      // sling back arm + grandma
+      Mini.emoji(ctx, '👵', SLING.x - 62, GROUND - 32, 64);
+      ctx.strokeStyle = '#6d4c41'; ctx.lineWidth = 12; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(SLING.x, GROUND); ctx.lineTo(SLING.x, SLING.y + 40); ctx.lineTo(SLING.x - 18, SLING.y); ctx.moveTo(SLING.x, SLING.y + 40); ctx.lineTo(SLING.x + 18, SLING.y); ctx.stroke();
+      const pull = state === 'pull' ? aimFrom : null;
+      if (pull) {
+        ctx.strokeStyle = '#3e2723'; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(SLING.x - 18, SLING.y); ctx.lineTo(pull.x, pull.y); ctx.lineTo(SLING.x + 18, SLING.y); ctx.stroke();
+        // trajectory preview (same integration Matter uses for a frictionless body)
+        let x = SLING.x, y = SLING.y, vx = (SLING.x - pull.x) * POWER, vy = (SLING.y - pull.y) * POWER;
+        ctx.fillStyle = 'rgba(255,255,255,0.9)';
+        for (let i = 1; i < 70; i++) { vy += 1 * 0.001 * (1000 / 60) * (1000 / 60); x += vx; y += vy; if (i % 4 === 0) { ctx.beginPath(); ctx.arc(x, y, 3.5 - i / 40, 0, Mini.TAU); ctx.fill(); } if (y > GROUND) break; }
+      }
+      if (state === 'aim' || state === 'pull') Mini.emoji(ctx, '👜', pull ? pull.x : SLING.x, pull ? pull.y : SLING.y, 34);
+      // trail
+      ctx.fillStyle = 'rgba(255,255,255,0.6)';
+      trail.forEach(([x, y], i) => { if (i % 3 === 0) { ctx.beginPath(); ctx.arc(x, y, 3, 0, Mini.TAU); ctx.fill(); } });
+      // blocks
+      for (const b of blocks) {
+        const M = MAT[b.mat], v = b.vertices;
+        ctx.fillStyle = M.color; ctx.strokeStyle = M.edge; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.moveTo(v[0].x, v[0].y); for (let i = 1; i < v.length; i++) ctx.lineTo(v[i].x, v[i].y); ctx.closePath(); ctx.fill(); ctx.stroke();
+        const dmg = 1 - b.hp / (M.hp * (b.w * b.h > 3000 ? 1.5 : 1));
+        if (dmg > 0.35) { ctx.strokeStyle = 'rgba(0,0,0,0.45)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(v[0].x, v[0].y); ctx.lineTo((v[0].x + v[2].x) / 2 + 4, (v[0].y + v[2].y) / 2); ctx.lineTo(v[2].x, v[2].y); ctx.stroke(); }
+        if (b.mat === 'wood') { ctx.strokeStyle = 'rgba(80,40,10,0.25)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo((v[0].x + v[3].x) / 2, (v[0].y + v[3].y) / 2); ctx.lineTo((v[1].x + v[2].x) / 2, (v[1].y + v[2].y) / 2); ctx.stroke(); }
+      }
+      for (const b of birds) Mini.emoji(ctx, '🐦', b.position.x, b.position.y, 34, b.angle, true);
+      if (bag) Mini.emoji(ctx, slammed ? '🧱' : '👜', bag.position.x, bag.position.y, 34, bag.angle);
+      parts.draw(ctx);
+      for (const f of floats) { ctx.globalAlpha = Math.min(1, f.t * 2); Mini.text(ctx, f.text, f.x, f.y, 20, '#fff59d'); }
+      ctx.globalAlpha = 1;
+      ctx.restore();
+      // HUD
+      const top = S.top + 12;
+      Mini.text(ctx, 'Level ' + (level + 1), 14, top + 12, 18, '#fff', 'left');
+      Mini.text(ctx, String(score), S.W / 2, top + 12, 22, '#fff');
+      for (let i = 0; i < bagsLeft - (state === 'aim' || state === 'pull' ? 1 : 0); i++) Mini.emoji(ctx, '👜', 24 + i * 28, top + 44, 24);
+      Mini.text(ctx, '🐦 ' + birds.length, 14, top + 74, 16, '#fff', 'left');
+      if (banner) { ctx.globalAlpha = Math.min(1, banner.t * 2); Mini.text(ctx, banner.text, S.W / 2, S.H * 0.3, 32, '#ffeb3b'); ctx.globalAlpha = 1; }
+      if (state === 'fly' && bag && !slammed) Mini.text(ctx, 'Tap to SLAM!', S.W / 2, top + 44, 15, '#fff');
+    },
+  });
+})();
+</script>
+</body>
+</html>

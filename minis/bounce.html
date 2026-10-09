@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Bounce Arena</title>
+<script src="../cookies.js" defer></script>
+</head>
+<body>
+<script src="mini.js"></script>
+<script>
+(() => {
+  const GRAV = 620, PR = 9, BR = 8, SHOT = 520;
+  const COLORS = { blue: '#42a5f5', orange: '#ff7043', green: '#66bb6a', purple: '#ab47bc' };
+  const PTS = { blue: 10, orange: 100, green: 10, purple: 500 };
+  const parts = Mini.particles();
+  let A, pegs, balls, aimAng, aiming, shotsLeft, score, level, bucket, orangeHit, floats, msg, clearT, shotScore;
+  function arena(S) { const w = Math.min(S.W - 12, 520); A = { x: (S.W - w) / 2, w, top: S.top + 70, bot: S.bot - 10 }; A.lx = A.x + A.w / 2; A.ly = A.top + 16; }
+  function buildLevel(n) {
+    pegs = [];
+    const add = (x, y) => { if (x > A.x + 14 && x < A.x + A.w - 14 && !pegs.some((p) => Math.hypot(p.x - x, p.y - y) < PR * 2.6)) pegs.push({ x, y, kind: 'blue', lit: false }); };
+    const top = A.top + 120, H = A.bot - 140 - top, cx = A.x + A.w / 2;
+    const style = n % 4;
+    if (style === 0) { for (let r = 0; r < 7; r++) for (let c = 0; c < 9; c++) add(A.x + A.w * (c + 0.5 + (r % 2) * 0.5) / 9.5, top + r * H / 7); }
+    else if (style === 1) { for (let ring = 1; ring <= 4; ring++) { const R = ring * Math.min(A.w, H) / 9, k = 6 + ring * 5; for (let i = 0; i < k; i++) add(cx + Math.cos(i / k * Mini.TAU) * R * 1.25, top + H / 2 + Math.sin(i / k * Mini.TAU) * R); } }
+    else if (style === 2) { for (let r = 0; r < 6; r++) for (let i = 0; i < 12; i++) add(A.x + A.w * (i + 0.5) / 12, top + r * H / 6 + Math.sin(i / 2 + r) * 22); }
+    else { for (let r = 0; r < 7; r++) { const k = 2 + r; for (let i = 0; i < k; i++) add(cx + (i - (k - 1) / 2) * A.w / 10, top + r * H / 7); } for (let i = 0; i < 10; i++) add(A.x + 20 + i * 8, top + H - i * 18), add(A.x + A.w - 20 - i * 8, top + H - i * 18); }
+    const shuffled = pegs.slice().sort(() => Math.random() - 0.5);
+    const nOrange = Math.min(Math.floor(pegs.length * 0.3), 14 + n * 2);
+    shuffled.slice(0, nOrange).forEach((p) => { p.kind = 'orange'; });
+    shuffled.slice(nOrange, nOrange + 2).forEach((p) => { p.kind = 'green'; });
+    shuffled[nOrange + 2] && (shuffled[nOrange + 2].kind = 'purple');
+    balls = []; shotsLeft = 10; orangeHit = 0; clearT = 0; msg = { t: 1.6, s: 'Level ' + (n + 1) };
+  }
+  const oranges = () => pegs.filter((p) => p.kind === 'orange').length;
+  function fire() {
+    if (balls.length || shotsLeft <= 0 || clearT) return;
+    shotsLeft--; shotScore = 0;
+    balls.push({ x: A.lx, y: A.ly, vx: Math.cos(aimAng) * SHOT, vy: Math.sin(aimAng) * SHOT, still: 0 });
+    Mini.sfx('shoot');
+  }
+  function aimAt(x, y) { aimAng = Mini.clamp(Math.atan2(y - A.ly, x - A.lx), 0.12, Math.PI - 0.12); }
+  function collide(b, dt) {
+    if (b.x < A.x + BR) { b.x = A.x + BR; b.vx = Math.abs(b.vx) * 0.85; }
+    if (b.x > A.x + A.w - BR) { b.x = A.x + A.w - BR; b.vx = -Math.abs(b.vx) * 0.85; }
+    if (b.y < A.top + BR) { b.y = A.top + BR; b.vy = Math.abs(b.vy) * 0.85; }
+    for (const p of pegs) {
+      const dx = b.x - p.x, dy = b.y - p.y, d = Math.hypot(dx, dy);
+      if (d >= PR + BR || d === 0) continue;
+      const nx = dx / d, ny = dy / d, vn = b.vx * nx + b.vy * ny;
+      b.x = p.x + nx * (PR + BR + 0.5); b.y = p.y + ny * (PR + BR + 0.5);
+      if (vn < 0) { b.vx -= 1.75 * vn * nx; b.vy -= 1.75 * vn * ny; }
+      if (!p.lit) {
+        p.lit = true; Mini.sfx('pop');
+        const mult = 1 + Math.floor(orangeHit / 6);
+        const v = PTS[p.kind] * mult; score += v; shotScore += v;
+        if (p.kind === 'orange') orangeHit++;
+        if (p.kind === 'green') { balls.push({ x: b.x, y: b.y, vx: -b.vx, vy: b.vy - 120, still: 0 }); msg = { t: 1, s: 'Multi-ball!' }; }
+        floats.push({ x: p.x, y: p.y, t: 0.8, s: '+' + v, c: COLORS[p.kind] });
+      }
+      p.touch = (p.touch || 0) + dt;
+    }
+  }
+  Mini.game({
+    id: 'bounce', title: 'Bounce Arena', icon: '🔵',
+    tagline: 'Fire the ball, ping off the pegs and watch the chain reaction. Clear every orange peg to win the level!',
+    how: '👆 Drag to aim, release to fire (or tap where you want to shoot).<br>🟠 Hit all orange pegs within 10 balls. 🟢 green = multi-ball, 🟣 purple = bonus.<br>🪣 Land in the moving bucket for a free ball!',
+    init(S) { arena(S); score = 0; level = 0; floats = []; aimAng = Math.PI / 2; aiming = false; parts.clear(); bucket = { x: A.x + A.w / 2, dir: 1 }; buildLevel(0); },
+    resize(S) { if (pegs) arena(S); },
+    down(x, y) { aiming = true; aimAt(x, y); },
+    move(x, y) { if (aiming) aimAt(x, y); },
+    up(x, y) { if (!aiming) return; aimAt(x, y); aiming = false; fire(); },
+    key(code) { if (code === 'ArrowLeft') aimAng = Math.min(Math.PI - 0.12, aimAng + 0.05); if (code === 'ArrowRight') aimAng = Math.max(0.12, aimAng - 0.05); if (code === 'Space') fire(); },
+    keyRepeat: true,
+    update(dt, S) {
+      parts.update(dt);
+      if (msg) { msg.t -= dt; if (msg.t <= 0) msg = null; }
+      floats.forEach((f) => { f.t -= dt; f.y -= 30 * dt; }); floats = floats.filter((f) => f.t > 0);
+      bucket.x += bucket.dir * 110 * dt;
+      if (bucket.x < A.x + 40) bucket.dir = 1; if (bucket.x > A.x + A.w - 40) bucket.dir = -1;
+      const steps = 4;
+      for (const b of balls) {
+        for (let k = 0; k < steps; k++) { b.vy += GRAV * dt / steps; b.x += b.vx * dt / steps; b.y += b.vy * dt / steps; collide(b, dt / steps); }
+        b.still = Math.hypot(b.vx, b.vy) < 40 ? b.still + dt : 0;
+        if (b.still > 1.5) { pegs.filter((p) => p.lit && Math.hypot(p.x - b.x, p.y - b.y) < 40).forEach((p) => { p.gone = true; }); pegs = pegs.filter((p) => !p.gone); b.still = 0; }
+        const by = A.bot - 26;
+        if (!b.done && b.y > by - 6 && b.y < by + 14 && Math.abs(b.x - bucket.x) < 34) { b.done = true; shotsLeft++; msg = { t: 1.2, s: 'FREE BALL!' }; Mini.sfx('coin'); }
+        if (b.y > A.bot + 20) b.done = true;
+      }
+      if (balls.length && balls.every((b) => b.done)) {
+        balls = [];
+        pegs.filter((p) => p.lit).forEach((p) => parts.burst(p.x, p.y, COLORS[p.kind], 6, 120, 4));
+        pegs = pegs.filter((p) => !p.lit);
+        if (shotScore >= 1500) msg = { t: 1.2, s: 'Great shot! ' + shotScore };
+        if (!oranges()) { const bonus = shotsLeft * 1000; score += bonus; clearT = 2.2; msg = { t: 2, s: 'LEVEL CLEAR! +' + bonus }; Mini.sfx('win'); }
+        else if (shotsLeft <= 0) { S.over(score, 'OUT OF BALLS', oranges() + ' orange pegs left · level ' + (level + 1)); return; }
+      }
+      if (clearT) { clearT -= dt; if (clearT <= 0) { clearT = 0; level++; buildLevel(level); } }
+    },
+    draw(ctx, S) {
+      const g = ctx.createLinearGradient(0, 0, 0, S.H); g.addColorStop(0, '#0d1b3e'); g.addColorStop(1, '#1b0d33');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, S.W, S.H);
+      if (!pegs) return;
+      ctx.strokeStyle = 'rgba(255,255,255,.15)'; ctx.lineWidth = 2; ctx.strokeRect(A.x, A.top, A.w, A.bot - A.top);
+      // aim guide: simulate the first bounce-free stretch of the shot
+      if (!balls.length && !clearT) {
+        let x = A.lx, y = A.ly, vx = Math.cos(aimAng) * SHOT, vy = Math.sin(aimAng) * SHOT;
+        ctx.fillStyle = 'rgba(255,255,255,.55)';
+        for (let i = 0; i < 40; i++) { vy += GRAV * 0.02; x += vx * 0.02; y += vy * 0.02; if (x < A.x || x > A.x + A.w || pegs.some((p) => Math.hypot(p.x - x, p.y - y) < PR + BR)) break; if (i % 2 === 0) { ctx.beginPath(); ctx.arc(x, y, 2.5, 0, Mini.TAU); ctx.fill(); } }
+      }
+      for (const p of pegs) {
+        ctx.fillStyle = p.lit ? '#fff' : COLORS[p.kind];
+        if (p.lit) { ctx.shadowColor = COLORS[p.kind]; ctx.shadowBlur = 12; }
+        ctx.beginPath(); ctx.arc(p.x, p.y, PR, 0, Mini.TAU); ctx.fill();
+        ctx.shadowBlur = 0;
+        if (!p.lit) { ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.beginPath(); ctx.arc(p.x - 2.5, p.y - 2.5, 3, 0, Mini.TAU); ctx.fill(); }
+      }
+      // launcher
+      ctx.save(); ctx.translate(A.lx, A.ly); ctx.rotate(aimAng - Math.PI / 2);
+      ctx.fillStyle = '#90a4ae'; ctx.fillRect(-8, 0, 16, 34); ctx.restore();
+      ctx.fillStyle = '#cfd8dc'; ctx.beginPath(); ctx.arc(A.lx, A.ly, 16, 0, Mini.TAU); ctx.fill();
+      // bucket
+      const by = A.bot - 26;
+      ctx.fillStyle = '#ffca28'; ctx.beginPath(); ctx.moveTo(bucket.x - 36, by); ctx.lineTo(bucket.x + 36, by); ctx.lineTo(bucket.x + 28, by + 22); ctx.lineTo(bucket.x - 28, by + 22); ctx.closePath(); ctx.fill();
+      for (const b of balls) { ctx.fillStyle = '#e0e0e0'; ctx.beginPath(); ctx.arc(b.x, b.y, BR, 0, Mini.TAU); ctx.fill(); ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(b.x - 2, b.y - 2, 3, 0, Mini.TAU); ctx.fill(); }
+      parts.draw(ctx);
+      for (const f of floats) { ctx.globalAlpha = Math.min(1, f.t * 2); Mini.text(ctx, f.s, f.x, f.y - 12, 14, f.c); }
+      ctx.globalAlpha = 1;
+      const top = S.top + 12;
+      Mini.text(ctx, String(score), S.W / 2, top + 18, 24, '#fff');
+      Mini.text(ctx, '⚪ ' + shotsLeft, 14, top + 18, 18, '#fff', 'left');
+      Mini.text(ctx, '🟠 ' + oranges(), 14, top + 46, 16, '#ffab91', 'left');
+      Mini.text(ctx, 'L' + (level + 1) + '  ×' + (1 + Math.floor(orangeHit / 6)), S.W - 60, top + 18, 16, '#fff', 'right');
+      if (msg) { ctx.globalAlpha = Math.min(1, msg.t * 2); Mini.text(ctx, msg.s, S.W / 2, S.H * 0.45, 28, '#ffeb3b'); ctx.globalAlpha = 1; }
+    },
+  });
+})();
+</script>
+</body>
+</html>

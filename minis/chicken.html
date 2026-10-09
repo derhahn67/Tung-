@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Chicken Apocalypse</title>
+<script src="../cookies.js" defer></script>
+</head>
+<body>
+<script src="mini.js"></script>
+<script>
+(() => {
+  const COLS = 9, CARS = ['🚗', '🚕', '🚙', '🚓', '🚐'];
+  const parts = Mini.particles();
+  let C, rows, ch, camRow, maxRow, idleT, corn, dead, fox, deathMsg;
+  function makeRow(i) {
+    if (i < 3) return { type: 'grass', trees: i === 0 ? [] : [0, 8], corn: -1 };
+    const prev = rows[i - 1] ? rows[i - 1].type : 'grass', diff = Math.min(1, i / 120);
+    let r = Math.random(), type;
+    if (prev === 'grass' && r < 0.25) type = 'grass';
+    else if (r < 0.55 + diff * 0.1) type = 'road';
+    else if (r < 0.8) type = 'river';
+    else if (r < 0.88 && i > 12) type = 'rail';
+    else type = 'grass';
+    if (type === 'grass') {
+      const trees = []; for (let c = 0; c < COLS; c++) if (Math.random() < 0.18 + diff * 0.1 && c !== 4) trees.push(c);
+      return { type, trees, corn: Math.random() < 0.25 ? Mini.randInt(0, COLS - 1) : -1 };
+    }
+    if (type === 'road') {
+      const dir = Math.random() < 0.5 ? 1 : -1, speed = Mini.rand(1.2, 2.4 + diff * 2.5), objs = [], len = Math.random() < 0.15 ? 2 : 1;
+      let x = Mini.rand(0, 3);
+      while (x < COLS + 6) { objs.push({ x, w: len === 2 ? 2 : 1, e: len === 2 ? '🚌' : Mini.pick(CARS) }); x += Mini.rand(3, 6.5 - diff * 1.5); }
+      return { type, dir, speed, objs };
+    }
+    if (type === 'river') {
+      const dir = rows[i - 1] && rows[i - 1].type === 'river' ? -rows[i - 1].dir : (Math.random() < 0.5 ? 1 : -1), speed = Mini.rand(0.8, 1.8 + diff), objs = [];
+      let x = Mini.rand(-1, 1);
+      while (x < COLS + 8) { const w = Mini.randInt(2, 4 - (diff > 0.6 ? 1 : 0)); objs.push({ x, w }); x += w + Mini.rand(1.2, 2.6 + diff); }
+      return { type, dir, speed, objs };
+    }
+    return { type: 'rail', t: Mini.rand(2, 6), train: null };
+  }
+  function ensureRows() { while (rows.length < maxRow + 30) rows.push(makeRow(rows.length)); }
+  function wrap(row, o) { const span = COLS + 8; if (row.dir > 0 && o.x > COLS + 2) o.x -= span; if (row.dir < 0 && o.x + o.w < -2) o.x += span; }
+  function hop(dc, dr) {
+    if (dead || ch.t < 1) return;
+    const nr = ch.r + dr, nc = Math.round(ch.c) + dc;
+    if (nc < 0 || nc >= COLS || nr < 0) return;
+    const row = rows[nr];
+    if (row && row.type === 'grass' && row.trees.includes(nc)) { Mini.sfx('tap'); return; }
+    ch.fr = ch.r; ch.fc = ch.c; ch.r = nr; ch.c = nc; ch.t = 0; ch.face = dc ? dc : ch.face;
+    Mini.sfx('jump');
+    if (nr > maxRow) { maxRow = nr; idleT = 0; ensureRows(); }
+  }
+  function die(S, msg) {
+    if (dead) return;
+    dead = true; deathMsg = msg; Mini.sfx('hit');
+    parts.burst(screenX(ch.c), screenY(S, ch.r), '#fff', 30, 260, 6);
+    S.over(maxRow + corn * 5, msg, 'Rows: ' + maxRow + ' · 🌽 ' + corn);
+  }
+  let _S;
+  const screenX = (c) => (_S.W - COLS * C) / 2 + (c + 0.5) * C;
+  const screenY = (S, r) => S.bot - 3.2 * C - (r - camRow) * C;
+  Mini.game({
+    id: 'chicken', title: 'Chicken Apocalypse', icon: '🐔',
+    tagline: 'The farm has fallen. Hop across roads, rivers and railways to escape, and don\'t let the fox catch you dawdling!',
+    how: '👆 Tap to hop forward. Swipe left, right or down to hop sideways or back.<br>🪵 Ride the logs, water is deadly.<br>🦊 Stand still too long and the fox gets you!',
+    init(S) {
+      _S = S; C = Math.min(S.W / COLS, 64); rows = []; maxRow = 0; ensureRows();
+      ch = { r: 0, c: 4, fr: 0, fc: 4, t: 1, face: 1 }; camRow = 0; idleT = 0; corn = 0; dead = false; fox = null; parts.clear();
+    },
+    resize(S) { _S = S; if (rows) C = Math.min(S.W / COLS, 64); },
+    tap() { hop(0, 1); },
+    swipe(d) { if (d === 'up') hop(0, 1); else if (d === 'down') hop(0, -1); else hop(d === 'left' ? -1 : 1, 0); },
+    key(code) {
+      if (code === 'ArrowUp' || code === 'KeyW' || code === 'Space') hop(0, 1);
+      if (code === 'ArrowDown' || code === 'KeyS') hop(0, -1);
+      if (code === 'ArrowLeft' || code === 'KeyA') hop(-1, 0);
+      if (code === 'ArrowRight' || code === 'KeyD') hop(1, 0);
+    },
+    update(dt, S) {
+      _S = S;
+      parts.update(dt);
+      for (let i = Math.max(0, Math.floor(camRow) - 4); i < Math.min(rows.length, camRow + 25); i++) {
+        const row = rows[i];
+        if (row.type === 'road' || row.type === 'river') for (const o of row.objs) { o.x += row.dir * row.speed * dt; wrap(row, o); }
+        if (row.type === 'rail') {
+          if (!row.train) { row.t -= dt; if (row.t <= 0) row.train = { x: row.dir = Math.random() < 0.5 ? -14 : COLS + 4, dir: row.dir < 0 ? 1 : -1, warn: 1.1 }; }
+          else if (row.train.warn > 0) row.train.warn -= dt;
+          else { row.train.x += row.train.dir * 26 * dt; if (row.train.x > COLS + 16 || row.train.x < -26) { row.train = null; row.t = Mini.rand(3, 7); } }
+        }
+      }
+      if (dead) return;
+      ch.t = Math.min(1, ch.t + dt / 0.12);
+      camRow += (Math.max(0, ch.r - 1) - camRow) * Math.min(1, dt * 4);
+      idleT += dt;
+      const row = rows[ch.r];
+      if (ch.t >= 1) {
+        if (row.type === 'river') {
+          const log = row.objs.find((o) => ch.c + 0.5 > o.x + 0.1 && ch.c + 0.5 < o.x + o.w - 0.1);
+          if (!log) return die(S, 'SPLASH!');
+          ch.c += row.dir * row.speed * dt; ch.fc = ch.c;
+          if (ch.c < -0.5 || ch.c > COLS - 0.5) return die(S, 'SWEPT AWAY!');
+        } else if (row.type === 'grass' && row.corn === Math.round(ch.c)) { row.corn = -1; corn++; Mini.sfx('coin'); parts.burst(screenX(ch.c), screenY(S, ch.r), '#ffeb3b', 10, 140, 4); }
+      }
+      if (row.type === 'road' && ch.t > 0.5 && row.objs.some((o) => ch.c + 0.5 > o.x + 0.12 && ch.c + 0.5 < o.x + o.w - 0.12)) return die(S, 'SQUASHED!');
+      if (row.type === 'rail' && row.train && row.train.warn <= 0 && ch.c + 0.5 > row.train.x && ch.c + 0.5 < row.train.x + 12) return die(S, 'HIT BY A TRAIN!');
+      const limit = Math.max(4, 8 - maxRow / 60);
+      if ((idleT > limit || ch.r < maxRow - 4) && !fox) fox = { t: 0 };
+      if (fox) { fox.t += dt; if (fox.t > 0.7) return die(S, 'THE FOX GOT YOU!'); }
+    },
+    draw(ctx, S) {
+      _S = S;
+      ctx.fillStyle = '#7cb342'; ctx.fillRect(0, 0, S.W, S.H);
+      if (!rows) return;
+      const x0 = (S.W - COLS * C) / 2;
+      const first = Math.max(0, Math.floor(camRow) - 4), last = Math.min(rows.length - 1, Math.ceil(camRow + S.H / C) + 1);
+      for (let i = first; i <= last; i++) {
+        const row = rows[i], y = screenY(S, i);
+        const top = y - C / 2;
+        if (row.type === 'grass') { ctx.fillStyle = i % 2 ? '#8bc34a' : '#9ccc65'; ctx.fillRect(0, top, S.W, C); }
+        else if (row.type === 'road') { ctx.fillStyle = '#555b61'; ctx.fillRect(0, top, S.W, C); ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.setLineDash([C * 0.4, C * 0.4]); ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0, top + 1); ctx.lineTo(S.W, top + 1); ctx.stroke(); ctx.setLineDash([]); }
+        else if (row.type === 'river') { ctx.fillStyle = '#4fc3f7'; ctx.fillRect(0, top, S.W, C); ctx.fillStyle = 'rgba(255,255,255,.25)'; for (let k = 0; k < 6; k++) ctx.fillRect(((k * 97 + S.time * 30 * row.dir) % S.W + S.W) % S.W, top + C * (0.25 + (k % 3) * 0.2), 18, 2); }
+        else { ctx.fillStyle = '#795548'; ctx.fillRect(0, top, S.W, C); ctx.fillStyle = '#5d4037'; for (let x = 0; x < S.W; x += 16) ctx.fillRect(x, top + 4, 8, C - 8); ctx.fillStyle = '#9e9e9e'; ctx.fillRect(0, top + C * 0.3, S.W, 3); ctx.fillRect(0, top + C * 0.7, S.W, 3); }
+      }
+      for (let i = last; i >= first; i--) {
+        const row = rows[i], y = screenY(S, i);
+        if (row.type === 'grass') { for (const c of row.trees) Mini.emoji(ctx, i % 3 ? '🌳' : '🌲', x0 + (c + 0.5) * C, y - 4, C * 0.95); if (row.corn >= 0) Mini.emoji(ctx, '🌽', x0 + (row.corn + 0.5) * C, y, C * 0.55, Math.sin(S.time * 4) * 0.2); }
+        if (row.type === 'river') for (const o of row.objs) { ctx.fillStyle = '#8d6e63'; Mini.rrect(ctx, x0 + o.x * C + 2, y - C * 0.3, o.w * C - 4, C * 0.6, C * 0.25); ctx.fill(); ctx.strokeStyle = '#5d4037'; ctx.lineWidth = 2; ctx.stroke(); }
+        if (row.type === 'road') for (const o of row.objs) Mini.emoji(ctx, o.e, x0 + (o.x + o.w / 2) * C, y, C * (o.w === 2 ? 1.6 : 0.95), 0, row.dir > 0);
+        if (row.type === 'rail' && row.train) {
+          if (row.train.warn > 0) { if (Math.floor(S.time * 8) % 2) Mini.emoji(ctx, '🚨', x0 + C * (row.train.dir > 0 ? 0.5 : COLS - 0.5), y, C * 0.7); }
+          else for (let k = 0; k < 6; k++) Mini.emoji(ctx, k === 0 ? '🚆' : '🚃', x0 + (row.train.x + (row.train.dir > 0 ? 12 - 2 * k - 1 : 2 * k + 1)) * C, y, C * 1.9, 0, row.train.dir > 0);
+        }
+        if (i === ch.r || (ch.t < 1 && i === ch.fr)) {
+          if (i !== ch.r) continue;
+          const k = ch.t, cx = x0 + (ch.fc + (ch.c - ch.fc) * k + 0.5) * C;
+          const cy = screenY(S, ch.fr) + (screenY(S, ch.r) - screenY(S, ch.fr)) * k - Math.sin(k * Math.PI) * C * 0.35;
+          if (!dead) Mini.emoji(ctx, '🐔', cx, cy, C * 0.9, 0, ch.face > 0);
+          if (fox) Mini.emoji(ctx, '🦊', cx, cy + C * (1.6 - fox.t * 2.2), C * 1.1);
+        }
+      }
+      parts.draw(ctx);
+      const top = S.top + 12;
+      Mini.text(ctx, String(maxRow || 0), S.W / 2, top + 22, 34, '#fff');
+      Mini.text(ctx, '🌽 ' + (corn || 0), 14, top + 22, 18, '#fff', 'left');
+      if (!dead && idleT > Math.max(4, 8 - maxRow / 60) - 2 && !fox) Mini.text(ctx, '🦊 Hurry!', S.W / 2, top + 58, 18, '#ff8a65');
+    },
+  });
+})();
+</script>
+</body>
+</html>

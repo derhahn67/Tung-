@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Pixel Defender</title>
+<script src="../cookies.js" defer></script>
+</head>
+<body>
+<script src="mini.js"></script>
+<script>
+(() => {
+  const ROWS = [[6, '#e040fb', 40], [5, '#ffff00', 30], [4, '#40c4ff', 20], [4, '#40c4ff', 20], [3, '#ff4081', 10]];
+  const parts = Mini.particles();
+  let ship, aliens, dir, stepT, shots, eshots, shields, ufo, ufoT, lives, score, wave, fireCd, area, hitT, msg;
+  function poly(ctx, x, y, r, sides, rot, color, fill) {
+    ctx.beginPath();
+    for (let i = 0; i <= sides; i++) { const a = rot + i / sides * Mini.TAU; i ? ctx.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r) : ctx.moveTo(x + Math.cos(a) * r, y + Math.sin(a) * r); }
+    if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+    ctx.strokeStyle = color; ctx.lineWidth = 2.5; ctx.stroke();
+  }
+  function makeArea(S) { const w = Math.min(S.W - 16, 560); area = { x: (S.W - w) / 2, w, top: S.top + 60, bot: S.bot - 24 }; }
+  function newWave(S) {
+    aliens = [];
+    const cols = 8, gap = area.w / (cols + 2.5), size = Math.min(14, gap * 0.36);
+    ROWS.forEach(([sides, color, pts], r) => {
+      for (let c = 0; c < cols; c++) aliens.push({ x: area.x + gap * (c + 1), y: area.top + 40 + r * gap * 0.85 + Math.min(wave, 6) * 12, sides, color, pts, r: size, alive: true, ph: Math.random() * 6 });
+    });
+    dir = 1; stepT = 0;
+    shields = [];
+    const sy = area.bot - 120, bs = 6;
+    for (let k = 0; k < 4; k++) {
+      const sx = area.x + area.w * (k + 0.5) / 4 - 4 * bs;
+      for (let i = 0; i < 8; i++) for (let j = 0; j < 5; j++) if (!(j >= 3 && i >= 2 && i <= 5) && !(j === 0 && (i === 0 || i === 7))) shields.push({ x: sx + i * bs, y: sy + j * bs, s: bs });
+    }
+    shots = []; eshots = []; msg = { t: 1.5, s: 'Wave ' + (wave + 1) };
+  }
+  function hitShield(b) {
+    const i = shields.findIndex((s) => b.x > s.x - 1 && b.x < s.x + s.s + 1 && b.y > s.y && b.y < s.y + s.s);
+    if (i < 0) return false;
+    const s = shields[i]; shields.splice(i, 1);
+    shields = shields.filter((o) => Math.hypot(o.x - s.x, o.y - s.y) > s.s * 1.3 || Math.random() < 0.5);
+    parts.burst(s.x, s.y, '#76ff03', 4, 80, 3, 0);
+    return true;
+  }
+  Mini.game({
+    id: 'pixel', title: 'Pixel Defender', icon: '⬜',
+    tagline: 'A neon polygon armada descends. One tiny white pixel stands in the way. Classic arcade defense!',
+    how: '👆 Drag to move (or ←/→). You fire automatically.<br>🧱 Hide behind the green shields. They crumble!<br>🛸 Shoot the bonus octagon for big points.',
+    init(S) {
+      makeArea(S); ship = { x: S.W / 2, y: area.bot - 40 }; lives = 3; score = 0; wave = 0; fireCd = 0; ufo = null; ufoT = 15; hitT = 0; parts.clear(); newWave(S);
+    },
+    resize(S) { if (ship) { makeArea(S); ship.y = area.bot - 40; } },
+    down(x) { ship.tx = x; }, move(x) { ship.tx = x; }, up() { ship.tx = null; },
+    update(dt, S) {
+      parts.update(dt);
+      if (msg) { msg.t -= dt; if (msg.t <= 0) msg = null; }
+      if (hitT > 0) { hitT -= dt; return; }
+      let vx = 0;
+      if (S.keys.has('ArrowLeft') || S.keys.has('KeyA')) vx -= 1;
+      if (S.keys.has('ArrowRight') || S.keys.has('KeyD')) vx += 1;
+      if (ship.tx != null) ship.x += Mini.clamp(ship.tx - ship.x, -600 * dt, 600 * dt); else ship.x += vx * 340 * dt;
+      ship.x = Mini.clamp(ship.x, area.x + 12, area.x + area.w - 12);
+      fireCd -= dt;
+      if (fireCd <= 0 && shots.length < 3) { shots.push({ x: ship.x, y: ship.y - 12 }); fireCd = 0.42; Mini.sfx('shoot'); }
+      const alive = aliens.filter((a) => a.alive);
+      const speedK = 1 + (1 - alive.length / aliens.length) * 3.5 + wave * 0.25;
+      stepT += dt * speedK;
+      if (stepT >= 0.5) {
+        stepT = 0;
+        const step = 10;
+        const minX = Math.min(...alive.map((a) => a.x)), maxX = Math.max(...alive.map((a) => a.x));
+        if ((dir > 0 && maxX + step > area.x + area.w - 14) || (dir < 0 && minX - step < area.x + 14)) { dir = -dir; alive.forEach((a) => { a.y += 16; }); }
+        else alive.forEach((a) => { a.x += step * dir; });
+        Mini.sfx('tap');
+      }
+      if (alive.some((a) => a.y + a.r > ship.y - 20)) { lives = 0; S.over(score, 'INVADED!', 'Reached wave ' + (wave + 1)); return; }
+      // aliens fire from the bottom of a column
+      if (Math.random() < dt * (0.9 + wave * 0.25) && alive.length) {
+        const shooter = Mini.pick(alive);
+        const bottom = alive.filter((a) => Math.abs(a.x - shooter.x) < 3).reduce((a, b) => (b.y > a.y ? b : a));
+        eshots.push({ x: bottom.x, y: bottom.y + bottom.r, vy: 210 + wave * 15 });
+      }
+      for (const b of shots) {
+        b.y -= 620 * dt;
+        if (b.y < area.top) b.done = true;
+        if (hitShield(b)) { b.done = true; continue; }
+        for (const a of alive) if (a.alive && Math.abs(a.x - b.x) < a.r + 2 && Math.abs(a.y - b.y) < a.r + 4) { a.alive = false; b.done = true; score += a.pts; parts.burst(a.x, a.y, a.color, 12, 160, 4, 0); Mini.sfx('pop'); break; }
+        if (ufo && Math.abs(ufo.x - b.x) < 18 && Math.abs(ufo.y - b.y) < 12) { const v = Mini.pick([50, 100, 150, 300]); score += v; b.done = true; parts.burst(ufo.x, ufo.y, '#ff1744', 20, 220, 5, 0); msg = { t: 1, s: '+' + v }; ufo = null; Mini.sfx('win'); }
+      }
+      for (const b of eshots) {
+        b.y += b.vy * dt;
+        if (b.y > S.H) b.done = true;
+        if (hitShield(b)) { b.done = true; continue; }
+        if (Math.abs(b.x - ship.x) < 12 && Math.abs(b.y - ship.y) < 10) {
+          b.done = true; lives--; hitT = 1; eshots = []; parts.burst(ship.x, ship.y, '#fff', 30, 260, 4, 0); Mini.sfx('hit');
+          if (lives <= 0) { S.over(score, 'PIXEL LOST', 'Reached wave ' + (wave + 1)); return; }
+        }
+      }
+      shots = shots.filter((b) => !b.done); eshots = eshots.filter((b) => !b.done);
+      ufoT -= dt;
+      if (!ufo && ufoT <= 0) { const d = Math.random() < 0.5 ? 1 : -1; ufo = { x: d > 0 ? area.x - 20 : area.x + area.w + 20, y: area.top + 14, d }; ufoT = Mini.rand(14, 24); }
+      if (ufo) { ufo.x += ufo.d * 120 * dt; if (ufo.x < area.x - 40 || ufo.x > area.x + area.w + 40) ufo = null; }
+      if (!alive.length) { wave++; score += 100; Mini.sfx('win'); newWave(S); }
+    },
+    draw(ctx, S) {
+      ctx.fillStyle = '#000'; ctx.fillRect(0, 0, S.W, S.H);
+      if (!aliens) return;
+      ctx.fillStyle = 'rgba(255,255,255,.4)';
+      for (let i = 0; i < 50; i++) ctx.fillRect((i * 137) % S.W, (i * 251 + S.time * (10 + i % 5 * 6)) % S.H, 1.5, 1.5);
+      ctx.strokeStyle = 'rgba(255,255,255,.1)'; ctx.beginPath(); ctx.moveTo(area.x, area.bot); ctx.lineTo(area.x + area.w, area.bot); ctx.stroke();
+      for (const a of aliens) if (a.alive) poly(ctx, a.x, a.y, a.r, a.sides, S.time * 1.5 + a.ph, a.color, '#000');
+      ctx.fillStyle = '#76ff03'; for (const s of shields) ctx.fillRect(s.x, s.y, s.s, s.s);
+      if (ufo) poly(ctx, ufo.x, ufo.y, 14, 8, S.time * 4, '#ff1744', '#300');
+      ctx.fillStyle = '#fff'; for (const b of shots) ctx.fillRect(b.x - 2, b.y - 6, 4, 10);
+      ctx.fillStyle = '#ff4081'; for (const b of eshots) { ctx.fillRect(b.x - 2, b.y - 5, 4, 4); ctx.fillRect(b.x - 2 + (Math.floor(b.y / 6) % 2 ? 2 : -2), b.y - 1, 4, 4); }
+      if (!(hitT > 0 && Math.floor(hitT * 10) % 2)) {
+        ctx.fillStyle = 'rgba(255,255,255,.2)'; ctx.fillRect(ship.x - 14, ship.y - 8, 28, 16);
+        ctx.fillStyle = '#fff'; ctx.fillRect(ship.x - 10, ship.y - 4, 20, 8); ctx.fillRect(ship.x - 3, ship.y - 10, 6, 6);
+      }
+      parts.draw(ctx);
+      const top = S.top + 12;
+      Mini.text(ctx, String(score), S.W / 2, top + 20, 24, '#fff');
+      for (let i = 0; i < lives; i++) { ctx.fillStyle = '#fff'; ctx.fillRect(16 + i * 22, top + 16, 14, 6); ctx.fillRect(21 + i * 22, top + 11, 4, 5); }
+      Mini.text(ctx, 'W' + (wave + 1), S.W - 60, top + 20, 18, '#fff', 'right');
+      if (msg) { ctx.globalAlpha = Math.min(1, msg.t * 2); Mini.text(ctx, msg.s, S.W / 2, S.H * 0.55, 28, '#fff'); ctx.globalAlpha = 1; }
+    },
+  });
+})();
+</script>
+</body>
+</html>

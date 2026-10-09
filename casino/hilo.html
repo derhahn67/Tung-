@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Hi-Lo · Play-Money Casino</title>
+<link rel="stylesheet" href="casino.css">
+<style>
+  :root { --cw: 96px; }
+  .mult { text-align: center; font-size: 34px; font-weight: 900; color: var(--gold); }
+  .trail { display: flex; gap: 4px; justify-content: center; flex-wrap: wrap; --cw: 34px; min-height: 50px; }
+  .trail .card .mid { display: none; } .trail .card .tl { font-size: 12px; }
+  .choice { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .choice .btn { padding: 16px 8px; } .choice small { display: block; font-size: 12px; font-weight: 600; opacity: .85; }
+</style>
+<script src="../cookies.js" defer></script>
+</head>
+<body>
+<script src="casino.js"></script>
+<script>Casino.header('Hi-Lo', '⬆️');</script>
+<div class="wrap">
+  <div class="panel col">
+    <div class="trail" id="trail"></div>
+    <div class="cards" id="card"></div>
+    <div class="mult" id="mult">×1.00</div>
+    <div class="msg" id="msg">Guess whether the next card is higher or lower. Cash out whenever you like.</div>
+  </div>
+  <div class="panel col" style="margin-top:12px">
+    <div class="choice" id="choice" style="display:none">
+      <button class="btn blue" id="hi">⬆ Higher or same<small id="hiP"></small></button>
+      <button class="btn red" id="lo">⬇ Lower or same<small id="loP"></small></button>
+    </div>
+    <div class="row" id="mid" style="display:none"><button class="btn" id="skip">Skip card</button><button class="btn gold" id="cash">Cash out</button></div>
+    <div id="betRow" class="col"><div id="bet"></div><div class="row"><button class="btn gold" id="start">Start</button></div></div>
+  </div>
+  <p class="disclaimer">Ace is high. Each correct guess multiplies your stake by its odds (97% return). Play money only.</p>
+</div>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const bet = Casino.betBox($('bet'), { key: 'hilo', init: 50 });
+  let card = null, mult = 1, stake = 0, live = false, trail = [];
+  const newCard = () => ({ r: 2 + Casino.rand(13), s: Casino.rand(4) });
+  const pHi = (r) => (14 - r + 1) / 13, pLo = (r) => (r - 1) / 13;
+  function show() {
+    $('card').innerHTML = ''; if (card) $('card').appendChild(Casino.cardEl(card));
+    $('trail').innerHTML = ''; trail.forEach((c) => $('trail').appendChild(Casino.cardEl(c)));
+    $('mult').textContent = '×' + mult.toFixed(2) + (live ? ' = 🪙 ' + Casino.fmt(stake * mult) : '');
+    if (card && live) {
+      $('hiP').textContent = Math.round(pHi(card.r) * 100) + '% · ×' + (0.97 / pHi(card.r)).toFixed(2);
+      $('loP').textContent = Math.round(pLo(card.r) * 100) + '% · ×' + (0.97 / pLo(card.r)).toFixed(2);
+    }
+    $('choice').style.display = live ? 'grid' : 'none';
+    $('mid').style.display = live ? 'flex' : 'none';
+    $('betRow').style.display = live ? 'none' : 'flex';
+    $('cash').disabled = mult <= 1;
+  }
+  function msg(t, cls) { const m = $('msg'); m.textContent = t; m.className = 'msg' + (cls ? ' ' + cls : ''); }
+  $('start').onclick = () => {
+    if (!Casino.bet(bet.value)) return;
+    stake = bet.value; mult = 1; live = true; trail = []; card = newCard(); msg(''); show();
+  };
+  function guess(up) {
+    if (!live) return;
+    const p = up ? pHi(card.r) : pLo(card.r), next = newCard();
+    const ok = up ? next.r >= card.r : next.r <= card.r;
+    trail.push(card); if (trail.length > 10) trail.shift();
+    card = next; Casino.sfx('card');
+    if (ok) { mult *= 0.97 / p; msg('Correct!', 'win'); }
+    else { live = false; msg('Wrong. Lost 🪙 ' + Casino.fmt(stake), 'lose'); Casino.sfx('lose'); mult = 0; }
+    show();
+  }
+  $('hi').onclick = () => guess(true);
+  $('lo').onclick = () => guess(false);
+  $('skip').onclick = () => { if (!live) return; trail.push(card); if (trail.length > 10) trail.shift(); card = newCard(); Casino.sfx('card'); show(); };
+  $('cash').onclick = () => {
+    if (!live || mult <= 1) return;
+    const win = Math.floor(stake * mult); live = false;
+    Casino.pay(win, stake); Casino.sfx('win'); msg('Cashed out 🪙 ' + Casino.fmt(win), 'win'); show();
+  };
+  show();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Play-Money Casino</title>
+<link rel="stylesheet" href="casino.css">
+<style>
+  .hero { text-align: center; padding: 10px 0 4px; }
+  .hero h2 { margin: 0; font-size: 30px; color: var(--gold); letter-spacing: 1px; }
+  h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--dim); margin: 22px 0 8px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr)); gap: 10px; }
+  a.game { display: flex; gap: 12px; align-items: center; padding: 12px; border-radius: 14px; background: rgba(0,0,0,.28); border: 1px solid var(--line); text-decoration: none; transition: transform .1s, border-color .1s; }
+  a.game:hover { transform: translateY(-2px); border-color: var(--gold); }
+  .ic { font-size: 34px; width: 50px; height: 50px; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.25); border-radius: 12px; flex: none; }
+  .game b { display: block; font-size: 16px; } .game small { color: var(--dim); font-size: 12.5px; }
+  .walletcard { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+</style>
+<script src="../cookies.js" defer></script>
+</head>
+<body>
+<script src="casino.js"></script>
+<script>Casino.header('Casino', '🎰', '../index.html');</script>
+<div class="wrap">
+  <div class="hero"><h2>♠ ♥ PLAY-MONEY CASINO ♦ ♣</h2><p class="muted">Every game uses the same 🪙 Chips wallet. Chips are free and fake: no real money, ever.</p></div>
+  <div class="panel walletcard">
+    <div><div class="label">Your chips</div><div id="bal" style="font-size:28px;font-weight:900;color:var(--gold)"></div></div>
+    <button class="btn gold" onclick="Casino.openWallet()">Wallet · free chips</button>
+  </div>
+  <div id="list"></div>
+  <p class="disclaimer">This casino is just for fun. Chips can't be bought, sold, transferred or exchanged for anything, and they never leave your browser.</p>
+</div>
+<script>
+(() => {
+  const GROUPS = [
+    ['Cards', [
+      ['blackjack.html', '🃏', 'Blackjack', 'Beat the dealer to 21. Double and split.'],
+      ['holdem.html', '♠️', "Texas Hold'em", 'No-limit poker vs 3 computer players.'],
+      ['videopoker.html', '🎴', 'Video Poker', 'Jacks or Better: hold, draw, hit a Royal.'],
+      ['baccarat.html', '💎', 'Baccarat', 'Player, Banker or Tie: closest to 9 wins.'],
+      ['hilo.html', '⬆️', 'Hi-Lo', 'Higher or lower? Build a streak, cash out.'],
+    ]],
+    ['Table & Wheels', [
+      ['roulette.html', '🎡', 'Roulette', 'European wheel: numbers, colours, dozens.'],
+      ['wheel.html', '🎯', 'Money Wheel', 'Big Six wheel: bet on 1, 2, 5, 10, 20 or ★.'],
+      ['dice.html', '🎲', 'Dice', 'Roll over or under your target.'],
+    ]],
+    ['Arcade Casino', [
+      ['slots.html', '🎰', 'Lucky Slots', '3 reels, 5 lines, big 7️⃣ jackpot.'],
+      ['crash.html', '🚀', 'Crash Rocket', 'Cash out before the rocket blows up.'],
+      ['mines.html', '💣', 'Mines', 'Find gems on a 5×5 grid, dodge the mines.'],
+      ['plinko.html', '🔻', 'Plinko', 'Drop balls through pegs into multipliers.'],
+    ]],
+  ];
+  const L = document.getElementById('list');
+  for (const [title, games] of GROUPS) {
+    L.insertAdjacentHTML('beforeend', '<h3>' + title + '</h3>');
+    const g = document.createElement('div'); g.className = 'grid';
+    g.innerHTML = games.map(([href, ic, name, desc]) => '<a class="game" href="' + href + '"><span class="ic">' + ic + '</span><span><b>' + name + '</b><small>' + desc + '</small></span></a>').join('');
+    L.appendChild(g);
+  }
+  const bal = () => { document.getElementById('bal').textContent = '🪙 ' + Casino.fmt(Casino.balance); };
+  bal(); setInterval(bal, 1000);
+})();
+</script>
+</body>
+</html>

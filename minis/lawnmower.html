@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Lawnmower vs. Wild</title>
+<script src="../cookies.js" defer></script>
+</head>
+<body>
+<script src="mini.js"></script>
+<script>
+(() => {
+  const DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
+  const ROCKS = ['🪨', '🌳', '🌷', '🌲', '🍄', '🌻'];
+  const parts = Mini.particles();
+  let level, map, cols, rows, mower, mowed, total, moves, par, history, slide, clearT, deco, totalStars;
+  /* Generates a level by carving a random sequence of slides, then turning every cell the solution never
+     touches into an obstacle. Replaying the same moves is a guaranteed solution, and its length is "par". */
+  function generate(n) {
+    for (let attempt = 0; attempt < 400; attempt++) {
+      cols = Math.min(5 + Math.floor(n / 3), 9); rows = Math.min(6 + Math.floor(n / 2), 12);
+      const open = [...Array(rows)].map(() => Array(cols).fill(false));
+      let x = Mini.randInt(0, cols - 1), y = Mini.randInt(0, rows - 1);
+      const start = [x, y]; open[y][x] = true;
+      const solution = [], wanted = 4 + Math.min(10, n);
+      let lastDir = null;
+      for (let k = 0; k < 60 && solution.length < wanted; k++) {
+        const name = Mini.pick(Object.keys(DIRS)); if (name === lastDir) continue;
+        const [dx, dy] = DIRS[name];
+        let len = 0, cx = x, cy = y;
+        const maxLen = Mini.randInt(1, 6);
+        while (len < maxLen) {
+          const nx = cx + dx, ny = cy + dy;
+          if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) break;
+          cx = nx; cy = ny; len++;
+        }
+        if (!len) continue;
+        // the slide must actually stop here: the next cell must stay blocked
+        const bx = cx + dx, by = cy + dy;
+        if (bx >= 0 && by >= 0 && bx < cols && by < rows && open[by][bx]) continue;
+        for (let i = 1; i <= len; i++) open[y + dy * i][x + dx * i] = true;
+        x = cx; y = cy; solution.push(name); lastDir = name;
+      }
+      // replay to find what the solution really covers
+      const visited = [...Array(rows)].map(() => Array(cols).fill(false));
+      let px = start[0], py = start[1]; visited[py][px] = true;
+      for (const name of solution) {
+        const [dx, dy] = DIRS[name];
+        while (true) { const nx = px + dx, ny = py + dy; if (nx < 0 || ny < 0 || nx >= cols || ny >= rows || !open[ny][nx]) break; px = nx; py = ny; visited[py][px] = true; }
+      }
+      const cells = visited.flat().filter(Boolean).length;
+      const strict = attempt < 300;
+      if (cells < (strict ? Math.min(cols * rows * 0.45, 10 + n * 2.2) : 6) || solution.length < (strict ? 3 : 2)) continue;
+      map = visited.map((row) => row.map((v) => (v ? 1 : 0)));
+      total = cells; par = solution.length;
+      mower = { x: start[0], y: start[1], fx: start[0], fy: start[1], t: 1, ang: 0 };
+      return;
+    }
+  }
+  function startLevel(n) {
+    generate(n);
+    mowed = map.map((row) => row.map(() => false)); mowed[mower.y][mower.x] = true;
+    moves = 0; history = []; slide = null; clearT = 0;
+    deco = map.map((row) => row.map(() => Mini.pick(ROCKS)));
+  }
+  const mowedCount = () => mowed.flat().filter(Boolean).length;
+  function go(name) {
+    if (slide || clearT) return;
+    const [dx, dy] = DIRS[name];
+    let x = mower.x, y = mower.y;
+    const path = [];
+    while (true) { const nx = x + dx, ny = y + dy; if (nx < 0 || ny < 0 || nx >= cols || ny >= rows || !map[ny][nx]) break; x = nx; y = ny; path.push([x, y]); }
+    if (!path.length) { Mini.sfx('tap'); return; }
+    history.push({ x: mower.x, y: mower.y, m: mowed.map((r) => r.slice()), moves });
+    moves++;
+    slide = { path, i: 0, t: 0, dx, dy };
+    mower.ang = Math.atan2(dy, dx);
+    Mini.sfx('swoosh');
+  }
+  function geo(S) {
+    const cell = Math.floor(Math.min((S.W - 24) / cols, (S.bot - S.top - 170) / rows, 64));
+    return { cell, x: (S.W - cell * cols) / 2, y: S.top + 100 + Math.max(0, ((S.bot - S.top - 170) - cell * rows) / 2) };
+  }
+  function button(S, i) { const g = geo(S), w = 110; return { x: S.W / 2 + (i ? 10 : -w - 10), y: g.y + g.cell * rows + 18, w, h: 40 }; }
+  Mini.game({
+    id: 'lawnmower', title: 'Lawnmower vs. Wild', icon: '🌿',
+    tagline: 'The wild has taken over the garden. Mow every last blade of grass, but your mower can\'t stop until it hits something!',
+    how: '👆 Swipe (or arrow keys) to send the mower rolling.<br>🪨 It only stops at rocks, trees, flowers or the edge.<br>🌿 Mow every grass tile to finish the level. ⭐⭐⭐ for matching par.',
+    init(S) { level = 0; totalStars = 0; parts.clear(); startLevel(0); },
+    swipe(d) { go(d); },
+    key(code) {
+      const m = { ArrowUp: 'up', KeyW: 'up', ArrowDown: 'down', KeyS: 'down', ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right' }[code];
+      if (m) go(m); if (code === 'KeyU' || code === 'Backspace') undo(); if (code === 'KeyR') restart();
+    },
+    tap(x, y, S) {
+      for (const [i, fn] of [[0, undo], [1, restart]]) { const b = button(S, i); if (x > b.x && x < b.x + b.w && y > b.y && y < b.y + b.h) fn(); }
+    },
+    update(dt, S) {
+      parts.update(dt);
+      if (slide) {
+        slide.t += dt * 16;
+        const g = geo(S);
+        while (slide.t >= 1 && slide.i < slide.path.length) {
+          slide.t -= 1;
+          const [x, y] = slide.path[slide.i++];
+          mower.fx = mower.x; mower.fy = mower.y; mower.x = x; mower.y = y;
+          if (!mowed[y][x]) { mowed[y][x] = true; parts.burst(g.x + (x + 0.5) * g.cell, g.y + (y + 0.5) * g.cell, '#7cb342', 5, 90, 4, 200); }
+        }
+        if (slide.i >= slide.path.length) {
+          slide = null; mower.fx = mower.x; mower.fy = mower.y;
+          if (mowedCount() === total) {
+            clearT = 1.6;
+            const stars = moves <= par ? 3 : moves <= par + 2 ? 2 : 1; totalStars += stars; mower.stars = stars;
+            Mini.sfx('win');
+          }
+        }
+      }
+      if (clearT) { clearT -= dt; if (clearT <= 0) { clearT = 0; level++; startLevel(level); } }
+    },
+    draw(ctx, S) {
+      ctx.fillStyle = '#3d6b2f'; ctx.fillRect(0, 0, S.W, S.H);
+      if (!map) return;
+      const g = geo(S), c = g.cell;
+      ctx.fillStyle = '#2d5222'; Mini.rrect(ctx, g.x - 8, g.y - 8, c * cols + 16, c * rows + 16, 14); ctx.fill();
+      for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) {
+        const px = g.x + x * c, py = g.y + y * c;
+        if (!map[y][x]) {
+          ctx.fillStyle = '#5d4037'; ctx.fillRect(px, py, c, c);
+          ctx.fillStyle = 'rgba(0,0,0,.15)'; ctx.fillRect(px, py + c - 4, c, 4);
+          Mini.emoji(ctx, deco[y][x], px + c / 2, py + c / 2, c * 0.72);
+        } else if (mowed[y][x]) {
+          ctx.fillStyle = (x + y) % 2 ? '#aed581' : '#c5e1a5'; ctx.fillRect(px, py, c, c);
+        } else {
+          ctx.fillStyle = '#558b2f'; ctx.fillRect(px, py, c, c);
+          ctx.strokeStyle = '#33691e'; ctx.lineWidth = 2;
+          for (let k = 0; k < 4; k++) { const bx = px + c * (0.2 + k * 0.2), by = py + c * 0.75; ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(bx + Math.sin(S.time * 3 + x + k) * 3, by - c * 0.35); ctx.stroke(); }
+        }
+      }
+      // mower (interpolated while sliding)
+      const k = slide ? Math.min(1, slide.t) : 1;
+      const mx = g.x + (mower.fx + (mower.x - mower.fx) * k + 0.5) * c, my = g.y + (mower.fy + (mower.y - mower.fy) * k + 0.5) * c;
+      ctx.save(); ctx.translate(mx, my); ctx.rotate(mower.ang);
+      ctx.fillStyle = '#222'; for (const [a, b] of [[-0.32, -0.4], [-0.32, 0.28], [0.18, -0.4], [0.18, 0.28]]) ctx.fillRect(a * c, b * c, c * 0.18, c * 0.12);
+      ctx.fillStyle = '#e53935'; Mini.rrect(ctx, -c * 0.34, -c * 0.3, c * 0.62, c * 0.6, c * 0.12); ctx.fill();
+      ctx.fillStyle = '#ffeb3b'; ctx.beginPath(); ctx.arc(0, 0, c * 0.1, 0, Mini.TAU); ctx.fill();
+      ctx.strokeStyle = '#555'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(-c * 0.34, -c * 0.2); ctx.lineTo(-c * 0.55, -c * 0.22); ctx.lineTo(-c * 0.55, c * 0.22); ctx.lineTo(-c * 0.34, c * 0.2); ctx.stroke();
+      ctx.restore();
+      parts.draw(ctx);
+      const top = S.top + 14;
+      Mini.text(ctx, 'Level ' + (level + 1), S.W / 2, top + 16, 26, '#fff');
+      Mini.text(ctx, 'Moves ' + moves + ' · Par ' + par, S.W / 2, top + 48, 16, '#dcedc8');
+      Mini.text(ctx, '🌿 ' + mowedCount() + '/' + total + '   ⭐ ' + totalStars, S.W / 2, top + 72, 15, '#fff');
+      ['↶ Undo', '↻ Restart'].forEach((t, i) => { const b = button(S, i); ctx.fillStyle = 'rgba(0,0,0,.35)'; Mini.rrect(ctx, b.x, b.y, b.w, b.h, 10); ctx.fill(); Mini.text(ctx, t, b.x + b.w / 2, b.y + b.h / 2, 15, '#fff', 'center', null); });
+      if (clearT) { Mini.text(ctx, 'LAWN MOWED!', S.W / 2, S.H * 0.45, 34, '#ffeb3b'); Mini.text(ctx, '⭐'.repeat(mower.stars || 1), S.W / 2, S.H * 0.45 + 40, 30, '#fff', 'center', null); }
+    },
+  });
+  function undo() { if (slide || clearT || !history.length) return; const h = history.pop(); mower.x = mower.fx = h.x; mower.y = mower.fy = h.y; mowed = h.m; moves = h.moves; Mini.sfx('tap'); }
+  function restart() { if (slide || clearT || !history.length) return; const h = history[0]; history = []; mower.x = mower.fx = h.x; mower.y = mower.fy = h.y; mowed = h.m; moves = 0; Mini.sfx('tap'); }
+  // Endless levels: the run ends when you leave, so the "score" is levels cleared, saved as you go.
+  setInterval(() => { if (Mini.S && Mini.S.state === 'play' && level > (Mini.store.get('best-lawnmower', 0) || 0)) Mini.store.set('best-lawnmower', level); }, 1000);
+})();
+</script>
+</body>
+</html>
